@@ -1,0 +1,38 @@
+version: "3"
+
+services:
+  bigsky:
+    build:
+      context: .
+      dockerfile: ./cmd/bigsky/Dockerfile
+    links:
+      - db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "2470:2470"
+      - "2471:2471"
+    volumes:
+      - bgs-data:/data/bigsky
+    environment:
+      DATABASE_URL: postgres://admin:password@db:5432/bgs
+      CARSTORE_DATABASE_URL: postgres://admin:password@db:5432/carstore
+  db:
+    image: postgres:14.6
+    container_name: postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - db-store:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d # この行を追加しただけ
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: "pg_isready -U admin -d bgs"
+      interval: 5s
+      retries: 20
+volumes:
+  bgs-data:
+  db-store:
