@@ -178,6 +178,7 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/xrpc/com.atproto.sync.getBlocks", bgs.HandleComAtprotoSyncGetBlocks)
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", bgs.HandleComAtprotoSyncNotifyOfUpdate)
+	e.GET("/xrpc/debug.getRecord", bgs.HandleDebugGetRecord)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
 
 	return e.Start(listen)

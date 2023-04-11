@@ -3,10 +3,14 @@ package bgs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
 	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
+	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/repo"
 	"github.com/ipfs/go-cid"
 )
 
@@ -124,4 +128,50 @@ func (s *BGS) handleComAtprotoSyncGetBlob(ctx context.Context, cid string, did s
 
 func (s *BGS) handleComAtprotoSyncListBlobs(ctx context.Context, did string, earliest string, latest string) (*comatprototypes.SyncListBlobs_Output, error) {
 	panic("NYI")
+}
+
+func (s *BGS) handleDebugGetRepoJson(ctx context.Context, did string, bcid string, rkey string) ([]byte, error) {
+	u, err := s.Index.LookupUserByDid(ctx, did)
+	if err != nil {
+		return nil, err
+	}
+
+	var decodedCid cid.Cid
+	if bcid != "" {
+		c, err := cid.Decode(bcid)
+		if err != nil {
+			return nil, err
+		}
+
+		decodedCid = c
+	}
+
+	// TODO: stream the response
+	buf := new(bytes.Buffer)
+	if err := s.repoman.ReadRepoAtCid(ctx, u.Uid, decodedCid, buf); err != nil {
+		return nil, err
+	}
+
+	sliceRepo, err := repo.ReadRepoFromCar(ctx, buf)
+	if err != nil {
+		return nil, err
+	}
+	rpath := "app.bsky.feed.post/" + rkey
+
+	_, rec, err := sliceRepo.GetRecord(ctx, rpath)
+	if err != nil {
+		return nil, err
+	}
+
+	post, suc := rec.(*appbsky.FeedPost)
+	if !suc {
+		return nil, errors.New("failed to deserialize post")
+	}
+
+	postJson, err := json.Marshal(post)
+	if err != nil {
+		return nil, err
+	}
+
+	return postJson, nil
 }

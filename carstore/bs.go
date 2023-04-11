@@ -381,6 +381,54 @@ func (cs *CarStore) ReadUserCar(ctx context.Context, user util.Uid, earlyCid, la
 	return nil
 }
 
+func (cs *CarStore) ReadUserCarAtCid(ctx context.Context, user util.Uid, decodedCid cid.Cid, w io.Writer) error {
+	ctx, span := otel.Tracer("carstore").Start(ctx, "ReadUserCar")
+	defer span.End()
+
+	var targetSeq int
+	var targetId uint
+
+	if decodedCid.Defined() {
+		var targetBlock blockRef
+		if err := cs.meta.Debug().First(&targetBlock, "cid = ?", util.DbCID{decodedCid}).Error; err != nil {
+			return fmt.Errorf("blockref, user: %v, cid: %v, root: %v, err: %v", user, decodedCid, util.DbCID{decodedCid}, err.Error())
+		}
+		var targetShard CarShard
+		if err := cs.meta.Debug().First(&targetShard, "id = ?", targetBlock.Shard).Error; err != nil {
+			return fmt.Errorf("CarShard, user: %v, cid: %v, root: %v, err: %v", user, decodedCid, util.DbCID{decodedCid}, err.Error())
+		}
+		targetId = targetShard.ID
+		targetSeq = targetShard.Seq
+	}
+
+	q := cs.meta.Order("seq desc").Where("usr = ? AND seq = ?", user, targetSeq)
+
+	var shards []CarShard
+	if err := q.Find(&shards).Error; err != nil {
+		return err
+	}
+
+	if len(shards) == 0 {
+		return fmt.Errorf("no data found for ,user: %v, cid: %v, targetSeq: %v, targetID: %v", user, util.DbCID{decodedCid}, targetSeq, targetId)
+	}
+
+	// fast path!
+	if err := car.WriteHeader(&car.CarHeader{
+		Roots:   []cid.Cid{shards[0].Root.CID},
+		Version: 1,
+	}, w); err != nil {
+		return err
+	}
+
+	for _, sh := range shards {
+		if err := cs.writeShardBlocks(ctx, &sh, w); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (cs *CarStore) writeShardBlocks(ctx context.Context, sh *CarShard, w io.Writer) error {
 	ctx, span := otel.Tracer("carstore").Start(ctx, "writeShardBlocks")
 	defer span.End()

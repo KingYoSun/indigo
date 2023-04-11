@@ -23,6 +23,7 @@ func (s *BGS) RegisterHandlersComAtproto(e *echo.Echo) error {
 	e.GET("/xrpc/com.atproto.sync.listBlobs", s.HandleComAtprotoSyncListBlobs)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", s.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", s.HandleComAtprotoSyncRequestCrawl)
+	e.GET("/xrpc/debug.getRepo", s.HandleDebugGetRecord)
 	return nil
 }
 
@@ -175,4 +176,19 @@ func (s *BGS) HandleComAtprotoSyncRequestCrawl(c echo.Context) error {
 		return handleErr
 	}
 	return nil
+}
+
+func (s *BGS) HandleDebugGetRecord(c echo.Context) error {
+	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleDebugGetRepo")
+	defer span.End()
+	did := c.QueryParam("did")
+	cid := c.QueryParam("cid")
+	rkey := c.QueryParam("rkey")
+
+  out, err := s.handleDebugGetRepoJson(ctx, did, cid, rkey)
+	if err != nil {
+		return c.JSON(500, err.Error())
+	}
+
+	return c.JSON(200, string(out))
 }
