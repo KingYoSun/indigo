@@ -103,11 +103,12 @@ type FollowRecord struct {
 type PDS struct {
 	gorm.Model
 
-	Host       string
-	Did        string
-	SSL        bool
-	Cursor     int64
-	Registered bool
+	Host       	string
+	Did        	string
+	SSL        	bool
+	Cursor     	int64
+	Registered 	bool
+	MeiliCursor	int64
 }
 
 func ClientForPds(pds *PDS) *xrpc.Client {
