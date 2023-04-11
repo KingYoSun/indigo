@@ -10,6 +10,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      meili:
+        condition: service_healthy
     ports:
       - "2470:2470"
       - "2471:2471"
@@ -33,6 +35,22 @@ services:
       test: "pg_isready -U admin -d bgs"
       interval: 5s
       retries: 20
+  meili:
+    image: getmeili/meilisearch:v1.1
+    container_name: meilisearch
+    ports:
+      - 7700:7700
+    volumes:
+      - meili-data:/meili_data
+    environment:
+      MEILI_MASTER_KEY: meili-master-key
+    healthcheck:
+      test: "curl http://localhost:7700/health"
+      interval: 10s
+      timeout: 30s
+      retries: 20
+      start_period: 10s
 volumes:
   bgs-data:
   db-store:
+  meili-data:
