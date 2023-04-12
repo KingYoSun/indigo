@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: ./cmd/bigsky/Dockerfile
+    image: kingyosun/indigo
+    container_name: indigo
     links:
       - db
     depends_on:
