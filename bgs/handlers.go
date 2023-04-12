@@ -175,3 +175,7 @@ func (s *BGS) handleDebugGetRepoJson(ctx context.Context, did string, bcid strin
 
 	return postJson, nil
 }
+
+func (s *BGS) handleComAtprotoSyncListRepos(ctx context.Context, cursor string, limit int) (*comatprototypes.SyncListRepos_Output, error) {
+	panic("NYI")
+}
