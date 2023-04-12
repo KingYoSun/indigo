@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: ./cmd/bigsky/Dockerfile
-    image: kingyosun/indigo
+    image: indigo-bigsky
     container_name: indigo
     links:
       - db
