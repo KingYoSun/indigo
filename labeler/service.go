@@ -1,17 +1,20 @@
-package labeling
+package labeler
 
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
-	"time"
 
 	"github.com/bluesky-social/indigo/api"
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	label "github.com/bluesky-social/indigo/api/label"
 	"github.com/bluesky-social/indigo/bgs"
 	"github.com/bluesky-social/indigo/carstore"
 	"github.com/bluesky-social/indigo/events"
@@ -34,44 +37,64 @@ import (
 var log = logging.Logger("labelmaker")
 
 type Server struct {
-	db               *gorm.DB
-	cs               *carstore.CarStore
-	repoman          *repomgr.RepoManager
-	bgsSlurper       *bgs.Slurper
-	evtmgr           *events.EventManager
-	echo             *echo.Echo
-	user             *RepoConfig
-	blobPdsURL       string
-	kwLabelers       []KeywordLabeler
-	muNSFWImgLabeler *MicroNSFWImgLabeler
-	hiveAILabeler    *HiveAILabeler
-	sqrlLabeler      *SQRLLabeler
+	db                  *gorm.DB
+	cs                  *carstore.CarStore
+	repoman             *repomgr.RepoManager
+	bgsSlurper          *bgs.Slurper
+	evtmgr              *events.EventManager
+	echo                *echo.Echo
+	user                *RepoConfig
+	blobPdsURL          string
+	xrpcProxyURL        *url.URL
+	xrpcProxyAuthHeader string
+	kwLabelers          []KeywordLabeler
+	muNSFWImgLabeler    *MicroNSFWImgLabeler
+	hiveAILabeler       *HiveAILabeler
+	sqrlLabeler         *SQRLLabeler
 }
 
 type RepoConfig struct {
 	Handle     string
 	Did        string
+	Password   string
 	SigningKey *did.PrivKey
 	UserId     util.Uid
 }
 
 // In addition to configuring the service, will connect to upstream BGS and start processing events. Won't handle HTTP or WebSocket endpoints until RunAPI() is called.
 // 'useWss' is a flag to use SSL for outbound WebSocket connections
-func NewServer(db *gorm.DB, cs *carstore.CarStore, repoUser RepoConfig, plcURL, blobPdsURL string, useWss bool) (*Server, error) {
+func NewServer(db *gorm.DB, cs *carstore.CarStore, repoUser RepoConfig, plcURL, blobPdsURL, xrpcProxyURL, xrpcProxyAdminPassword string, useWss bool) (*Server, error) {
 
 	db.AutoMigrate(models.PDS{})
+	db.AutoMigrate(models.Label{})
+	db.AutoMigrate(models.ModerationAction{})
+	db.AutoMigrate(models.ModerationActionSubjectBlobCid{})
+	db.AutoMigrate(models.ModerationReport{})
+	db.AutoMigrate(models.ModerationReportResolution{})
 
 	didr := &api.PLCServer{Host: plcURL}
 	kmgr := indexer.NewKeyManager(didr, repoUser.SigningKey)
 	evtmgr := events.NewEventManager(events.NewMemPersister())
 	repoman := repomgr.NewRepoManager(db, cs, kmgr)
 
+	if repoUser.Password == "" || repoUser.Did == "" || repoUser.Handle == "" {
+		return nil, fmt.Errorf("bad labeler repo config (empty string)")
+	}
+
+	proxyURL, err := url.ParseRequestURI(xrpcProxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse XRPC proxy URL (%v): %v", xrpcProxyURL, err)
+	}
+	xrpcProxyAuthHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:"+xrpcProxyAdminPassword))
+
 	s := &Server{
-		db:         db,
-		repoman:    repoman,
-		evtmgr:     evtmgr,
-		user:       &repoUser,
-		blobPdsURL: blobPdsURL,
+		db:                  db,
+		repoman:             repoman,
+		evtmgr:              evtmgr,
+		user:                &repoUser,
+		blobPdsURL:          blobPdsURL,
+		xrpcProxyURL:        proxyURL,
+		xrpcProxyAuthHeader: xrpcProxyAuthHeader,
 		// sluper configured below
 	}
 
@@ -333,9 +356,7 @@ func (s *Server) handleBgsRepoEvent(ctx context.Context, pds *models.PDS, evt *e
 		return err
 	}
 
-	now := time.Now().Format(util.ISO8601)
-	labels := []events.Label{}
-
+	labels := []*label.Label{}
 	for _, op := range evt.RepoCommit.Ops {
 		uri := "at://" + evt.RepoCommit.Repo + "/" + op.Path
 		nsid := strings.SplitN(op.Path, "/", 2)[0]
@@ -357,53 +378,69 @@ func (s *Server) handleBgsRepoEvent(ctx context.Context, pds *models.PDS, evt *e
 			// apply labels with this pattern to the whole repo, not the record
 			if strings.HasPrefix(val, "repo:") {
 				val = strings.SplitN(val, ":", 2)[1]
-				labels = append(labels, events.Label{
-					SourceDid:  s.user.Did,
-					SubjectUri: "at://" + evt.RepoCommit.Repo,
-					Value:      val,
-					Timestamp:  now,
+				labels = append(labels, &label.Label{
+					Src: s.user.Did,
+					Uri: "at://" + evt.RepoCommit.Repo,
+					Val: val,
+					//Neg
+					//Cts
 				})
 			} else {
-				labels = append(labels, events.Label{
-					SourceDid:  s.user.Did,
-					SubjectUri: uri,
-					SubjectCid: &cidStr,
-					Value:      val,
-					Timestamp:  now,
+				labels = append(labels, &label.Label{
+					Src: s.user.Did,
+					Uri: uri,
+					Cid: &cidStr,
+					Val: val,
+					//Neg
+					//Cts
 				})
 			}
 		}
 	}
 
-	// if any labels generated, persist them to repo...
-	for i, l := range labels {
-		path, _, err := s.repoman.CreateRecord(ctx, s.user.UserId, "com.atproto.label.label", &l)
-		if err != nil {
-			return fmt.Errorf("failed to persist label in local repo: %w", err)
-		}
-		labeluri := "at://" + s.user.Did + "/" + path
-		labels[i].LabelUri = &labeluri
-		log.Infof("persisted label: %s", labeluri)
+	// persist and emit events, as needed
+	if err := s.CommitLabels(ctx, labels, false); err != nil {
+		return err
 	}
 
-	// ... then re-publish as XRPCStreamEvent
-	log.Infof("broadcasting labels: %s", labels)
-	if len(labels) > 0 {
-		lev := events.XRPCStreamEvent{
-			LabelBatch: &events.LabelBatch{
-				// NOTE(bnewbold): seems like other code handles Seq field automatically
-				Labels: labels,
-			},
-		}
-		err = s.evtmgr.AddEvent(ctx, &lev)
-		if err != nil {
-			return fmt.Errorf("failed to publish XRPCStreamEvent: %w", err)
-		}
-	}
 	// TODO(bnewbold): persist state that we successfully processed the repo event (aka,
 	// persist "last" seq in database, or something like that). also above, at
 	// the short-circuit
 	return nil
+}
+
+// crude auth middleware to require "admin token" authentication on a subset of
+// routes. Does not implement the usual atproto JWT-based auth. "admin token"
+// auth is just HTTP Basic auth with username "admin" and a static password.
+// TODO: either transition to some other auth scheme, or review this more carefully
+func (s *Server) adminAuthMiddleware() echo.MiddlewareFunc {
+	config := middleware.BasicAuthConfig{
+		Skipper: func(c echo.Context) bool {
+			path := c.Request().URL.Path
+			// all admin paths require auth
+			if strings.HasPrefix(path, "/xrpc/com.atproto.admin.") {
+				return false
+			}
+			// TODO: will need more complex auth on this endpoint eventually
+			if strings.HasPrefix(path, "/xrpc/com.atproto.report.create") {
+				return false
+			}
+			// everything else defaults open
+			return true
+		},
+		Validator: func(username, password string, c echo.Context) (bool, error) {
+			// this is the default HTTP Basic validator from echo docs
+			// "Be careful to use constant time comparison to prevent timing attacks"
+			if subtle.ConstantTimeCompare([]byte(username), []byte("admin")) == 1 &&
+				subtle.ConstantTimeCompare([]byte(password), []byte(s.user.Password)) == 1 {
+				return true, nil
+			}
+			log.Warnw("auth failed", "username", string(username))
+			return false, nil
+		},
+		Realm: "AtprotoLabeler",
+	}
+	return middleware.BasicAuthWithConfig(config)
 }
 
 func (s *Server) RunAPI(listen string) error {
@@ -413,15 +450,26 @@ func (s *Server) RunAPI(listen string) error {
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Format: "method=${method} uri=${uri} status=${status} latency=${latency_human}\n",
 	}))
+	e.Use(s.adminAuthMiddleware())
 
 	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
-		fmt.Printf("Error at path=%s: %v\n", ctx.Path(), err)
-		ctx.Response().WriteHeader(500)
+		code := 500
+		if he, ok := err.(*echo.HTTPError); ok {
+			code = he.Code
+		}
+		log.Warnw("HTTP request error", "statusCode", code, "path", ctx.Path(), "err", err)
+		ctx.Response().WriteHeader(code)
 	}
 
-	s.RegisterHandlersComAtproto(e)
-	// TODO(bnewbold): this is a speculative endpoint name
-	e.GET("/xrpc/com.atproto.label.subscribeAllLabels", s.EventsLabelsWebsocket)
+	e.GET("/xrpc/_health", s.HandleHealthCheck)
+	if err := s.RegisterHandlersComAtproto(e); err != nil {
+		return err
+	}
+	if err := s.RegisterProxyHandlers(e); err != nil {
+		return err
+	}
+	// single websocket endpoint
+	e.GET("/xrpc/com.atproto.label.subscribeLabels", s.EventsLabelsWebsocket)
 
 	log.Infof("starting labelmaker XRPC and WebSocket daemon at: %s", listen)
 	return e.Start(listen)

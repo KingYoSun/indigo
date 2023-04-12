@@ -4,6 +4,7 @@ import (
 	"github.com/bluesky-social/indigo/api"
 	atproto "github.com/bluesky-social/indigo/api/atproto"
 	bsky "github.com/bluesky-social/indigo/api/bsky"
+	label "github.com/bluesky-social/indigo/api/label"
 	"github.com/bluesky-social/indigo/events"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	mst "github.com/bluesky-social/indigo/mst"
@@ -49,11 +50,15 @@ func main() {
 		panic(err)
 	}
 
+	if err := cbg.WriteMapEncodersToFile("api/label/cbor_gen.go", "label", label.Label{}, label.SubscribeLabels_Info{}, label.SubscribeLabels_Labels{}); err != nil {
+		panic(err)
+	}
+
 	if err := cbg.WriteMapEncodersToFile("lex/util/cbor_gen.go", "util", lexutil.CborChecker{}, lexutil.LegacyBlob{}, lexutil.BlobSchema{}); err != nil {
 		panic(err)
 	}
 
-	if err := cbg.WriteMapEncodersToFile("events/cbor_gen.go", "events", events.EventHeader{}, events.ErrorFrame{}, events.Label{}, events.LabelBatch{}); err != nil {
+	if err := cbg.WriteMapEncodersToFile("events/cbor_gen.go", "events", events.EventHeader{}, events.ErrorFrame{}); err != nil {
 		panic(err)
 	}
 }

@@ -7,23 +7,26 @@ import (
 
 	"github.com/bluesky-social/indigo/carstore"
 	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
-	"github.com/bluesky-social/indigo/labeling"
+	"github.com/bluesky-social/indigo/labeler"
 	"github.com/bluesky-social/indigo/version"
 	"github.com/urfave/cli/v2"
 
 	_ "github.com/joho/godotenv/autoload"
 
 	logging "github.com/ipfs/go-log"
+	"github.com/whyrusleeping/go-did"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 var log = logging.Logger("labelmaker")
 
 func main() {
-	run(os.Args)
+	if err := run(os.Args); err != nil {
+		log.Fatal(err)
+	}
 }
 
-func run(args []string) {
+func run(args []string) error {
 
 	app := cli.App{
 		Name:    "labelmaker",
@@ -89,10 +92,33 @@ func run(args []string) {
 			EnvVars: []string{"LABELMAKER_REPO_HANDLE"},
 		},
 		&cli.StringFlag{
+			Name:    "repo-password",
+			Usage:   "labelmaker repo password, used as admin password",
+			Value:   "admin",
+			EnvVars: []string{"LABELMAKER_REPO_PASSWORD"},
+		},
+		&cli.StringFlag{
+			Name:    "signing-secret-key-jwk",
+			Usage:   "signing key for labelmaker repo, in JWK serialization",
+			EnvVars: []string{"LABELMAKER_SIGNING_SECRET_KEY_JWK"},
+		},
+		&cli.StringFlag{
 			Name:    "bind",
 			Usage:   "IP or address, and port, to listen on for HTTP and WebSocket APIs",
 			Value:   ":2210",
 			EnvVars: []string{"LABELMAKER_BIND"},
+		},
+		&cli.StringFlag{
+			Name:    "xrpc-proxy-url",
+			Usage:   "backend URL to proxy (some) XRPC requests to",
+			Value:   "http://localhost:2583",
+			EnvVars: []string{"ATP_XRPC_PROXY_URL"},
+		},
+		&cli.StringFlag{
+			Name:    "xrpc-proxy-admin-password",
+			Usage:   "admin auth password for XRPC proxy requests",
+			Value:   "admin",
+			EnvVars: []string{"ATP_XRPC_PROXY_ADMIN_PASSWORD"},
 		},
 		&cli.StringFlag{
 			Name:    "keyword-file",
@@ -152,17 +178,17 @@ func run(args []string) {
 		}
 
 		kwlFile := cctx.String("keyword-file")
-		var kwl []labeling.KeywordLabeler
+		var kwl []labeler.KeywordLabeler
 		if kwlFile != "" {
-			kwl, err = labeling.LoadKeywordFile(kwlFile)
+			kwl, err = labeler.LoadKeywordFile(kwlFile)
 			if err != nil {
 				return err
 			}
 		} else {
 			// trivial examples
-			kwl = append(kwl, labeling.KeywordLabeler{Value: "meta", Keywords: []string{"bluesky", "atproto"}})
-			kwl = append(kwl, labeling.KeywordLabeler{Value: "wordle", Keywords: []string{"wordle"}})
-			kwl = append(kwl, labeling.KeywordLabeler{Value: "definite-article", Keywords: []string{"the"}})
+			kwl = append(kwl, labeler.KeywordLabeler{Value: "meta", Keywords: []string{"bluesky", "atproto"}})
+			kwl = append(kwl, labeler.KeywordLabeler{Value: "wordle", Keywords: []string{"wordle"}})
+			kwl = append(kwl, labeler.KeywordLabeler{Value: "definite-article", Keywords: []string{"the"}})
 		}
 
 		bgsURL := cctx.String("bgs-host")
@@ -171,24 +197,41 @@ func run(args []string) {
 		useWss := !cctx.Bool("subscribe-insecure-ws")
 		repoDid := cctx.String("repo-did")
 		repoHandle := cctx.String("repo-handle")
+		repoPassword := cctx.String("repo-password")
+		signingSecretKeyJwk := cctx.String("signing-secret-key-jwk")
 		bind := cctx.String("bind")
+		xrpcProxyURL := cctx.String("xrpc-proxy-url")
+		xrpcProxyAdminPassword := cctx.String("xrpc-proxy-admin-password")
 		microNSFWImgURL := cctx.String("micro-nsfw-img-url")
 		hiveAIToken := cctx.String("hiveai-api-token")
 		sqrlURL := cctx.String("sqrl-url")
 
-		serkey, err := cliutil.LoadKeyFromFile(repoKeyPath)
-		if err != nil {
-			return err
+		if repoPassword == "admin" {
+			log.Warn("using insecure default admin password (ok for dev, not for deployment)")
 		}
 
-		repoUser := labeling.RepoConfig{
+		var serkey *did.PrivKey
+		if signingSecretKeyJwk != "" {
+			serkey, err = labeler.ParseSecretKey(signingSecretKeyJwk)
+			if err != nil {
+				return err
+			}
+		} else {
+			serkey, err = labeler.LoadOrCreateKeyFile(repoKeyPath, "auto-labelmaker")
+			if err != nil {
+				return err
+			}
+		}
+
+		repoUser := labeler.RepoConfig{
 			Handle:     repoHandle,
 			Did:        repoDid,
+			Password:   repoPassword,
 			SigningKey: serkey,
 			UserId:     1,
 		}
 
-		srv, err := labeling.NewServer(db, cstore, repoUser, plcURL, blobPdsURL, useWss)
+		srv, err := labeler.NewServer(db, cstore, repoUser, plcURL, blobPdsURL, xrpcProxyURL, xrpcProxyAdminPassword, useWss)
 		if err != nil {
 			return err
 		}
@@ -213,5 +256,5 @@ func run(args []string) {
 		return srv.RunAPI(bind)
 	}
 
-	app.RunAndExitOnError()
+	return app.Run(args)
 }

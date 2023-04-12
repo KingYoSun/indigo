@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	label "github.com/bluesky-social/indigo/api/label"
 
 	"github.com/bluesky-social/indigo/util"
 	logging "github.com/ipfs/go-log"
@@ -113,17 +114,13 @@ type XRPCStreamEvent struct {
 	RepoInfo      *comatproto.SyncSubscribeRepos_Info
 	RepoMigrate   *comatproto.SyncSubscribeRepos_Migrate
 	RepoTombstone *comatproto.SyncSubscribeRepos_Tombstone
-	LabelBatch    *LabelBatch
+	LabelLabels   *label.SubscribeLabels_Labels
+	LabelInfo     *label.SubscribeLabels_Info
 
 	// some private fields for internal routing perf
 	PrivUid         util.Uid `json:"-" cborgen:"-"`
 	PrivPdsId       uint     `json:"-" cborgen:"-"`
 	PrivRelevantPds []uint   `json:"-" cborgen:"-"`
-}
-
-type LabelBatch struct {
-	Seq    int64   `cborgen:"seq"`
-	Labels []Label `cborgen:"labels"`
 }
 
 type ErrorFrame struct {

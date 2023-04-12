@@ -25,6 +25,9 @@ This service currently uses `gorm` to automatically run database migrations as
 the regular user. There is no concept of running a separate set of migrations
 under more privileged database user.
 
+For database performance with many labels, it is important that `LC_COLLATE=C`.
+That is, the string sort behavior must be by byte order.
+
 ## Keyword Labeler
 
 A trivial keyword filter labeler is included. To configure it, create a JSON
@@ -75,3 +78,24 @@ To use this, checkout the SQRL codebase and get it running, then copy the
 
 Counter state will not persist across restarts unless Redis is configured as
 well.
+
+
+## Repo Account Setup
+
+You'll need a DID and handle for the labelmaker service itself.
+
+Generate the secret keys (as JSON files), along with did:key representations,
+and store these in a password manager:
+
+    go run ./cmd/laputa/ gen-key -o labelmaker_signing.key
+    go run ./cmd/gosky/ did didKey --keypath labeler_signing.key
+
+    go run ./cmd/laputa/ gen-key -o labelmaker_recovery.key
+    go run ./cmd/gosky/ did didKey --keypath labeler_recovery.key
+
+Use the result to generate a new DID:
+
+    go run ./cmd/gosky/ did create --recoverydid did:key:FROMABOVE --signingkey labeler_signing.key your.handle.tld https://your.pds.host
+
+The signing key JSON, along with repo handle and DID, can be passed to
+labelmaker via an environment variables.
