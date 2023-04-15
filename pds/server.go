@@ -10,19 +10,19 @@ import (
 	"strings"
 	"time"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/carstore"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/indexer"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repomgr"
-	"github.com/bluesky-social/indigo/util"
-	bsutil "github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/indexer"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/notifs"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repomgr"
+	"github.com/KingYoSun/indigo/util"
+	bsutil "github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 	gojwt "github.com/golang-jwt/jwt"
 	"github.com/gorilla/websocket"
 	"github.com/ipfs/go-cid"
@@ -30,6 +30,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/meilisearch/meilisearch-go"
 	"github.com/whyrusleeping/go-did"
 	"golang.org/x/xerrors"
 	"gorm.io/gorm"
@@ -59,7 +60,7 @@ type Server struct {
 const UserActorDeclCid = "bafyreid27zk7lbis4zw5fz4podbvbs4fc5ivwji3dmrwa6zggnj4bnd57u"
 const UserActorDeclType = "app.bsky.system.actorUser"
 
-func NewServer(db *gorm.DB, cs *carstore.CarStore, serkey *did.PrivKey, handleSuffix, serviceUrl string, didr plc.PLCClient, jwtkey []byte) (*Server, error) {
+func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore, serkey *did.PrivKey, handleSuffix, serviceUrl string, didr plc.PLCClient, jwtkey []byte) (*Server, error) {
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Peering{})
 
@@ -70,7 +71,7 @@ func NewServer(db *gorm.DB, cs *carstore.CarStore, serkey *did.PrivKey, handleSu
 	repoman := repomgr.NewRepoManager(db, cs, kmgr)
 	notifman := notifs.NewNotificationManager(db, repoman.GetRecord)
 
-	ix, err := indexer.NewIndexer(db, notifman, evtman, didr, repoman, false, true)
+	ix, err := indexer.NewIndexer(db, meilicli ,notifman, evtman, didr, repoman, false, true)
 	if err != nil {
 		return nil, err
 	}

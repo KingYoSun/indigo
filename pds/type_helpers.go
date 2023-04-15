@@ -3,7 +3,7 @@ package pds
 import (
 	"context"
 
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	appbsky "github.com/KingYoSun/indigo/api/bsky"
 )
 
 // TODO: this is a quick helper to transform bsky.ActorDefs_ProfileViewBasic to

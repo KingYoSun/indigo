@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/lex/util"
+	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/lex/util"
 )
 
 // schema: app.bsky.feed.defs

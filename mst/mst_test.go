@@ -10,7 +10,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/bluesky-social/indigo/util"
+	"github.com/KingYoSun/indigo/util"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"

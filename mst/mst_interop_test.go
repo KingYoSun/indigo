@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/bluesky-social/indigo/util"
+	"github.com/KingYoSun/indigo/util"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/ipfs/go-cid"

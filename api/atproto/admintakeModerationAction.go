@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/xrpc"
 )
 
 // schema: com.atproto.admin.takeModerationAction

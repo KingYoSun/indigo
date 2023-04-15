@@ -8,20 +8,22 @@ import (
 	"strings"
 	"time"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/carstore"
-	"github.com/bluesky-social/indigo/events"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repomgr"
-	"github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/events"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/meili"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/notifs"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repomgr"
+	"github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
+	"github.com/meilisearch/meilisearch-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
@@ -32,6 +34,8 @@ var log = logging.Logger("indexer")
 
 type Indexer struct {
 	db *gorm.DB
+
+	meili *meili.MeiliSlurper
 
 	notifman notifs.NotificationManager
 	events   *events.EventManager
@@ -48,7 +52,7 @@ type Indexer struct {
 	CreateExternalUser func(context.Context, string) (*models.ActorInfo, error)
 }
 
-func NewIndexer(db *gorm.DB, notifman notifs.NotificationManager, evtman *events.EventManager, didr plc.DidResolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
+func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr plc.DidResolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
 	db.AutoMigrate(&models.FeedPost{})
 	db.AutoMigrate(&models.ActorInfo{})
 	db.AutoMigrate(&models.FollowRecord{})
@@ -66,6 +70,8 @@ func NewIndexer(db *gorm.DB, notifman notifs.NotificationManager, evtman *events
 			return nil
 		},
 	}
+
+	ix.meili = meili.NewMeiliSlurper(db, meilicli, repoman)
 
 	if crawl {
 		ix.Crawler = NewCrawlDispatcher(ix.FetchAndIndexRepo)
@@ -180,6 +186,10 @@ func (ix *Indexer) handleRecordDelete(ctx context.Context, evt *repomgr.RepoEven
 		}
 
 		if err := ix.db.Model(models.FeedPost{}).Where("id = ?", fp.ID).UpdateColumn("deleted", true).Error; err != nil {
+			return err
+		}
+
+		if err := ix.meili.DeleteDocument(ctx, fp.Cid); err != nil {
 			return err
 		}
 	case "app.bsky.feed.repost":
@@ -473,6 +483,11 @@ func (ix *Indexer) handleRecordUpdate(ctx context.Context, evt *repomgr.RepoEven
 			return err
 		}
 
+		// Add to Meilisearch
+		if err := ix.meili.FeeePostToMeili(ctx, fp); err != nil {
+			return err
+		}
+
 		return nil
 	case *bsky.FeedRepost:
 		var rr models.RepostRecord
@@ -607,6 +622,12 @@ func (ix *Indexer) handleRecordCreateFeedPost(ctx context.Context, user util.Uid
 		}
 	}
 
+	// Add to Meilisearch
+	if err := ix.meili.FeeePostToMeili(ctx, &fp); err != nil {
+		return err
+	}
+
+	// Add new post notification
 	if err := ix.addNewPostNotification(ctx, rec, &fp, mentions); err != nil {
 		return err
 	}

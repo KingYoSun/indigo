@@ -16,22 +16,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluesky-social/indigo/api"
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/bgs"
-	"github.com/bluesky-social/indigo/carstore"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/indexer"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/pds"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repo"
-	"github.com/bluesky-social/indigo/repomgr"
-	bsutil "github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/KingYoSun/indigo/api"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/bgs"
+	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/indexer"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/notifs"
+	"github.com/KingYoSun/indigo/pds"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repo"
+	"github.com/KingYoSun/indigo/repomgr"
+	bsutil "github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 	"github.com/ipfs/go-cid"
+	"github.com/meilisearch/meilisearch-go"
 	"github.com/multiformats/go-multihash"
 	"github.com/whyrusleeping/go-did"
 
@@ -106,7 +107,12 @@ func SetupPDS(host, suffix string, plc plc.PLCClient) (*testPDS, error) {
 		Type: did.KeyTypeP256,
 	}
 
-	srv, err := pds.NewServer(maindb, cs, serkey, suffix, host, plc, []byte(host+suffix))
+	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
+		Host: "http://localhost:7700",
+		APIKey: "meili-master-key",
+	})
+
+	srv, err := pds.NewServer(maindb, meilicli, cs, serkey, suffix, host, plc, []byte(host+suffix))
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +387,12 @@ func SetupBGS(host string, didr plc.PLCClient) (*testBGS, error) {
 
 	go evtman.Run()
 
-	ix, err := indexer.NewIndexer(maindb, notifman, evtman, didr, repoman, true, true)
+	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
+		Host: "http://localhost:7700",
+		APIKey: "meili-master-key",
+	})
+
+	ix, err := indexer.NewIndexer(maindb, meilicli, notifman, evtman, didr, repoman, true, true)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +403,7 @@ func SetupBGS(host string, didr plc.PLCClient) (*testBGS, error) {
 		}
 	})
 
-	b, err := bgs.NewBGS(maindb, ix, repoman, evtman, didr, nil, false)
+	b, err := bgs.NewBGS(maindb, ix, meilicli, repoman, evtman, didr, nil, false)
 	if err != nil {
 		return nil, err
 	}

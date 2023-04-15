@@ -9,10 +9,10 @@ import (
 	"os"
 	"testing"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	appbsky "github.com/KingYoSun/indigo/api/bsky"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
 	"github.com/ipfs/go-cid"
 
 	"github.com/stretchr/testify/assert"

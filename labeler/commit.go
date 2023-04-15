@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	label "github.com/bluesky-social/indigo/api/label"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/models"
-	util "github.com/bluesky-social/indigo/util"
+	label "github.com/KingYoSun/indigo/api/label"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/models"
+	util "github.com/KingYoSun/indigo/util"
 
 	"gorm.io/gorm/clause"
 )

@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/bluesky-social/indigo/api"
-	"github.com/bluesky-social/indigo/bgs"
-	"github.com/bluesky-social/indigo/blobs"
-	"github.com/bluesky-social/indigo/carstore"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/indexer"
-	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repomgr"
-	"github.com/bluesky-social/indigo/version"
+	"github.com/KingYoSun/indigo/api"
+	"github.com/KingYoSun/indigo/bgs"
+	"github.com/KingYoSun/indigo/blobs"
+	"github.com/KingYoSun/indigo/carstore"
+	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/indexer"
+	"github.com/KingYoSun/indigo/notifs"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repomgr"
+	"github.com/KingYoSun/indigo/version"
 
 	_ "net/http/pprof"
 
@@ -160,7 +160,7 @@ func run(args []string) {
 			return err
 		}
 
-		meili := meilisearch.NewClient(meilisearch.ClientConfig{
+		meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
 			Host: cctx.String("meilisearch-url"),
 			APIKey: cctx.String("meilisearch-apikey"),
 		})
@@ -198,7 +198,7 @@ func run(args []string) {
 
 		notifman := &notifs.NullNotifs{}
 
-		ix, err := indexer.NewIndexer(db, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
+		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
 		if err != nil {
 			return err
 		}
@@ -214,7 +214,7 @@ func run(args []string) {
 			blobstore = &blobs.DiskBlobStore{bsdir}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meili, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"))
+		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"))
 		if err != nil {
 			return err
 		}

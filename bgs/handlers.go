@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 
-	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/repo"
+	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
+	appbsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/repo"
 	"github.com/ipfs/go-cid"
 )
 

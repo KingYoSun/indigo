@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
-	appbskytypes "github.com/bluesky-social/indigo/api/bsky"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
+	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
+	appbskytypes "github.com/KingYoSun/indigo/api/bsky"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
 	"github.com/ipfs/go-cid"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )

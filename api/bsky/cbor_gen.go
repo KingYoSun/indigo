@@ -8,8 +8,8 @@ import (
 	"math"
 	"sort"
 
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	util "github.com/bluesky-social/indigo/lex/util"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	util "github.com/KingYoSun/indigo/lex/util"
 	cid "github.com/ipfs/go-cid"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"

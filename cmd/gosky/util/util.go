@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluesky-social/indigo/api"
-	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/KingYoSun/indigo/api"
+	"github.com/KingYoSun/indigo/xrpc"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/urfave/cli/v2"
 	"gorm.io/driver/postgres"

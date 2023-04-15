@@ -14,19 +14,20 @@ import (
 	"time"
 
 	"contrib.go.opencensus.io/exporter/prometheus"
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/blobs"
-	"github.com/bluesky-social/indigo/carstore"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/indexer"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repomgr"
-	"github.com/bluesky-social/indigo/util"
-	bsutil "github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/blobs"
+	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/indexer"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/meili"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repomgr"
+	"github.com/KingYoSun/indigo/util"
+	bsutil "github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 	"github.com/gorilla/websocket"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -44,9 +45,8 @@ var log = logging.Logger("bgs")
 type BGS struct {
 	Index   	*indexer.Indexer
 	db      	*gorm.DB
-	meili   	*meilisearch.Client
 	slurper 	*Slurper
-	meilislur	*MeiliSlurper
+	meilislur	*meili.MeiliSlurper
 	events  	*events.EventManager
 	didr    	plc.DidResolver
 
@@ -61,14 +61,13 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meili *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
-	db.AutoMigrate(User{})
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
+	db.AutoMigrate(models.User{})
 	db.AutoMigrate(models.PDS{})
 
 	bgs := &BGS{
 		Index: ix,
 		db:    db,
-		meili: meili,
 
 		repoman: repoman,
 		events:  evtman,
@@ -78,7 +77,7 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, meili *meilisearch.Client,repoman 
 
 	ix.CreateExternalUser = bgs.createExternalUser
 	bgs.slurper = NewSlurper(db, bgs.handleFedEvent, ssl)
-	bgs.meilislur = NewMeiliSlurper(db, meili, repoman)
+	bgs.meilislur = meili.NewMeiliSlurper(db, meilicli, repoman)
 
 	if err := bgs.slurper.RestartAll(); err != nil {
 		return nil, err
@@ -206,16 +205,6 @@ func (bgs *BGS) HandleHealthCheck(c echo.Context) error {
 	}
 }
 
-type User struct {
-	ID        bsutil.Uid `gorm:"primarykey"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt 	`gorm:"index"`
-	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
-	Did       string					`gorm:"uniqueIndex"`
-	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
-}
-
 type addTargetBody struct {
 	Host string `json:"host"`
 }
@@ -315,8 +304,8 @@ func prometheusHandler() http.Handler {
 	return exporter
 }
 
-func (bgs *BGS) lookupUserByDid(ctx context.Context, did string) (*User, error) {
-	var u User
+func (bgs *BGS) lookupUserByDid(ctx context.Context, did string) (*models.User, error) {
+	var u models.User
 	if err := bgs.db.Find(&u, "did = ?", did).Error; err != nil {
 		return nil, err
 	}
@@ -347,7 +336,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 				return fmt.Errorf("fed event create external user: %w", err)
 			}
 
-			u = new(User)
+			u = new(models.User)
 			u.ID = subj.Uid
 			u.Did = evt.Repo
 		}
@@ -518,7 +507,7 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		log.Infow("lost the race to create a new user", "did", did, "handle", handle)
 		if exu.PDS != peering.ID {
 			// User is now on a different PDS, update
-			if err := s.db.Model(User{}).Where("id = ?", exu.ID).Update("pds", peering.ID).Error; err != nil {
+			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("pds", peering.ID).Error; err != nil {
 				return nil, fmt.Errorf("failed to update users pds: %w", err)
 			}
 
@@ -526,7 +515,7 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 
 		if exu.Handle != handle {
 			// Users handle has changed, update
-			if err := s.db.Model(User{}).Where("id = ?", exu.ID).Update("handle", peering.ID).Error; err != nil {
+			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("handle", peering.ID).Error; err != nil {
 				return nil, fmt.Errorf("failed to update users handle: %w", err)
 			}
 
@@ -548,15 +537,15 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		return nil, err
 	}
 
-	var userExsited User
+	var userExsited models.User
 	if err:= s.db.Find(&userExsited, "did = ?", did).Error; err != nil {
 		return nil, fmt.Errorf("failed to find users: %w", err)
 	}
 
-	var u User
+	var u models.User
 	if userExsited.ID == 0 {
 		// TODO: request this users info from their server to fill out our data...
-		u = User{
+		u = models.User{
 			Handle: handle,
 			Did:    did,
 			PDS:    peering.ID,

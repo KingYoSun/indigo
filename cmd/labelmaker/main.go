@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bluesky-social/indigo/carstore"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
-	"github.com/bluesky-social/indigo/labeler"
-	"github.com/bluesky-social/indigo/version"
+	"github.com/KingYoSun/indigo/carstore"
+	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
+	"github.com/KingYoSun/indigo/labeler"
+	"github.com/KingYoSun/indigo/version"
 	"github.com/urfave/cli/v2"
 
 	_ "github.com/joho/godotenv/autoload"

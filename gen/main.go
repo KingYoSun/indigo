@@ -1,14 +1,14 @@
 package main
 
 import (
-	"github.com/bluesky-social/indigo/api"
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	label "github.com/bluesky-social/indigo/api/label"
-	"github.com/bluesky-social/indigo/events"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	mst "github.com/bluesky-social/indigo/mst"
-	"github.com/bluesky-social/indigo/repo"
+	"github.com/KingYoSun/indigo/api"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	label "github.com/KingYoSun/indigo/api/label"
+	"github.com/KingYoSun/indigo/events"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	mst "github.com/KingYoSun/indigo/mst"
+	"github.com/KingYoSun/indigo/repo"
 	cbg "github.com/whyrusleeping/cbor-gen"
 )
 

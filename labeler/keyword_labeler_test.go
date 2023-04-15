@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	bsky "github.com/bluesky-social/indigo/api/bsky"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
 )
 
 func TestKeywordFilter(t *testing.T) {

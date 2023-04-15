@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	label "github.com/bluesky-social/indigo/api/label"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/util"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	label "github.com/KingYoSun/indigo/api/label"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/util"
 
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/KingYoSun/indigo/xrpc"
 )
 
 // schema: com.atproto.sync.getRecord

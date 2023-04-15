@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/KingYoSun/indigo/lex/util"
 )
 
 // schema: com.atproto.admin.defs

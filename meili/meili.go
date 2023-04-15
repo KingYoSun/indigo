@@ -1,4 +1,4 @@
-package bgs
+package meili
 
 import (
 	"bytes"
@@ -6,21 +6,25 @@ import (
 	"errors"
 	"sync"
 
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/repo"
-	"github.com/bluesky-social/indigo/repomgr"
+	appbsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/repo"
+	"github.com/KingYoSun/indigo/repomgr"
+
+	logging "github.com/ipfs/go-log"
 
 	"github.com/ipfs/go-cid"
 	"github.com/meilisearch/meilisearch-go"
 	"gorm.io/gorm"
 )
 
+var log = logging.Logger("meili")
+
 type MeiliFeedPost struct {
 	Cid 	string						`json:"cid"`
 	Tid		string						`json:"tid"`
 	Post	*appbsky.FeedPost	`json:"post"`
-	User	*User							`json:"user"`
+	User	*models.User			`json:"user"`
 }
 
 type MeiliSlurper struct {
@@ -105,14 +109,14 @@ func (s *MeiliSlurper) copyRecordsToMeili(ctx context.Context, host *models.PDS)
 
 		s.db.ScanRows(rows, &feedPost)
 
-		if err := s.feeePostToMeili(ctx, feedPost); err != nil {
+		if err := s.FeeePostToMeili(ctx, feedPost); err != nil {
 			log.Errorf("[PdsToMeili] %v", err.Error())
 			continue
 		}
 	}
 }
 
-func (s *MeiliSlurper) feeePostToMeili(ctx context.Context, feedPost *models.FeedPost) error {
+func (s *MeiliSlurper) FeeePostToMeili(ctx context.Context, feedPost *models.FeedPost) error {
 	if feedPost.Cid == "" || feedPost.Missing {
 		return errors.New("[PdsToMeili] feed_post is missing")
 	}
@@ -122,7 +126,7 @@ func (s *MeiliSlurper) feeePostToMeili(ctx context.Context, feedPost *models.Fee
 		return err
 	}
 
-	var user *User
+	var user *models.User
 
 	if err := s.db.Find(&user, "id = ?", feedPost.Author).Error; err != nil {
 		return err
@@ -174,4 +178,12 @@ func (s *MeiliSlurper) getRecordFromCar(ctx context.Context, feedPost *models.Fe
 	}
 
 	return post, nil
+}
+
+func (s *MeiliSlurper) DeleteDocument(ctx context.Context, cid string) error {
+	if _, err := s.meili.Index("feed_posts").DeleteDocument(cid); err != nil {
+		return err
+	}
+
+	return nil
 }

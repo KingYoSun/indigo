@@ -3,7 +3,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/bluesky-social/indigo/xrpc"
+	"github.com/KingYoSun/indigo/xrpc"
 )
 
 // schema: app.bsky.graph.getFollows

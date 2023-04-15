@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/url"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/xrpc"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/xrpc"
 	did "github.com/whyrusleeping/go-did"
 	otel "go.opentelemetry.io/otel"
 )

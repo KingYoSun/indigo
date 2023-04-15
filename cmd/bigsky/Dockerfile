@@ -16,7 +16,7 @@ WORKDIR /dockerbuild
 
 # timezone data for alpine builds
 RUN GIT_VERSION=$(git describe --tags --long --always) && \
-    go build -tags timetzdata -ldflags="-X github.com/bluesky-social/indigo/version.Version=$GIT_VERSION"  -o /bigsky ./cmd/bigsky
+    go build -tags timetzdata -ldflags="-X github.com/KingYoSun/indigo/version.Version=$GIT_VERSION"  -o /bigsky ./cmd/bigsky
 
 ### Run stage
 FROM alpine:3.17
@@ -36,6 +36,6 @@ EXPOSE 2470
 
 CMD ["/bigsky"]
 
-LABEL org.opencontainers.image.source=https://github.com/bluesky-social/indigo
+LABEL org.opencontainers.image.source=https://github.com/KingYoSun/indigo
 LABEL org.opencontainers.image.description="ATP Big Graph Server (BGS)"
 LABEL org.opencontainers.image.licenses=MIT

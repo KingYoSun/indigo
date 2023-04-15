@@ -3,9 +3,9 @@ package indexer
 import (
 	"context"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/util"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/models"
+	"github.com/KingYoSun/indigo/util"
 
 	"go.opentelemetry.io/otel"
 )

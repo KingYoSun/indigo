@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strconv"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/repo"
-	"github.com/bluesky-social/indigo/repomgr"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/repo"
+	"github.com/KingYoSun/indigo/repomgr"
 
 	"github.com/gorilla/websocket"
 	"github.com/ipfs/go-cid"

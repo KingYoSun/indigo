@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bluesky-social/indigo/carstore"
+	"github.com/KingYoSun/indigo/carstore"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

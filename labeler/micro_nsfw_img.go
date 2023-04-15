@@ -9,9 +9,9 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	util "github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/version"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	util "github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/version"
 )
 
 type MicroNSFWImgLabeler struct {

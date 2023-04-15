@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/carstore"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/plc"
-	"github.com/bluesky-social/indigo/repomgr"
-	"github.com/bluesky-social/indigo/util"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/notifs"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/KingYoSun/indigo/repomgr"
+	"github.com/KingYoSun/indigo/util"
+	"github.com/meilisearch/meilisearch-go"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -61,7 +62,12 @@ func testIndexer(t *testing.T) *testIx {
 
 	didr := testPLC(t)
 
-	ix, err := NewIndexer(maindb, notifman, evtman, didr, repoman, false, true)
+	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
+		Host: "https://localhost:7700",
+		APIKey: "meili-master-key",
+	})
+
+	ix, err := NewIndexer(maindb, meilicli,notifman, evtman, didr, repoman, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-module github.com/bluesky-social/indigo
+module github.com/KingYoSun/indigo
 
 go 1.20
 

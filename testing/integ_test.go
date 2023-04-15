@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	atproto "github.com/bluesky-social/indigo/api/atproto"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
 	"github.com/ipfs/go-log/v2"
 	"github.com/stretchr/testify/assert"
 )

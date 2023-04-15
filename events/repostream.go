@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/repo"
-	"github.com/bluesky-social/indigo/repomgr"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/repo"
+	"github.com/KingYoSun/indigo/repomgr"
 
 	"github.com/gorilla/websocket"
 	cid "github.com/ipfs/go-cid"

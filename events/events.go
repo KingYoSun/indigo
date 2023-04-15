@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	label "github.com/bluesky-social/indigo/api/label"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	label "github.com/KingYoSun/indigo/api/label"
 
-	"github.com/bluesky-social/indigo/util"
+	"github.com/KingYoSun/indigo/util"
 	logging "github.com/ipfs/go-log"
 	"go.opentelemetry.io/otel"
 )

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/bluesky-social/indigo/events"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
+	"github.com/KingYoSun/indigo/events"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"

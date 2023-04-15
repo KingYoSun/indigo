@@ -4,9 +4,9 @@ import (
 	"net/http/httputil"
 	"strconv"
 
-	atproto "github.com/bluesky-social/indigo/api/atproto"
-	label "github.com/bluesky-social/indigo/api/label"
-	"github.com/bluesky-social/indigo/version"
+	atproto "github.com/KingYoSun/indigo/api/atproto"
+	label "github.com/KingYoSun/indigo/api/label"
+	"github.com/KingYoSun/indigo/version"
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"

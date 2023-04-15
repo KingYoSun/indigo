@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/carstore"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
-	"github.com/bluesky-social/indigo/plc"
+	"github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/carstore"
+	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
+	"github.com/KingYoSun/indigo/plc"
+	"github.com/meilisearch/meilisearch-go"
 	"github.com/whyrusleeping/go-did"
 	"gorm.io/gorm"
 )
@@ -54,7 +55,12 @@ func newTestServer(t *testing.T) (*Server, func()) {
 		Type: did.KeyTypeP256,
 	}
 
-	s, err := NewServer(db, cs, serkey, ".test", "", fakePlc, []byte("jwtsecretplaceholder"))
+	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
+		Host: "http://localhost:7700",
+		APIKey: "meili-master-key",
+	})
+
+	s, err := NewServer(db, meilicli, cs, serkey, ".test", "", fakePlc, []byte("jwtsecretplaceholder"))
 	if err != nil {
 		t.Fatal(err)
 	}

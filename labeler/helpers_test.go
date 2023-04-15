@@ -12,8 +12,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	label "github.com/bluesky-social/indigo/api/label"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	label "github.com/KingYoSun/indigo/api/label"
 )
 
 // fetches report, both getModerationReport and getModerationReports, verifies match

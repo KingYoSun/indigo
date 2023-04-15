@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	"github.com/bluesky-social/indigo/events"
-	"github.com/bluesky-social/indigo/models"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	"github.com/KingYoSun/indigo/events"
+	"github.com/KingYoSun/indigo/models"
 
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"

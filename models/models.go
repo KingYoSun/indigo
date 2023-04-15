@@ -5,9 +5,10 @@ import (
 
 	"gorm.io/gorm"
 
-	bsky "github.com/bluesky-social/indigo/api/bsky"
-	"github.com/bluesky-social/indigo/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	bsky "github.com/KingYoSun/indigo/api/bsky"
+	"github.com/KingYoSun/indigo/util"
+	bsutil "github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 )
 
 type FeedPost struct {
@@ -33,6 +34,17 @@ type RepostRecord struct {
 	RecCid     string
 	Rkey       string
 }
+
+type User struct {
+	ID        bsutil.Uid `gorm:"primarykey"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt 	`gorm:"index"`
+	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
+	Did       string					`gorm:"uniqueIndex"`
+	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
+}
+
 
 type ActorInfo struct {
 	gorm.Model

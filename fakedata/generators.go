@@ -10,10 +10,10 @@ import (
 	"math/rand"
 	"time"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	appbsky "github.com/bluesky-social/indigo/api/bsky"
-	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/xrpc"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	appbsky "github.com/KingYoSun/indigo/api/bsky"
+	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/xrpc"
 
 	"github.com/brianvoe/gofakeit/v6"
 	logging "github.com/ipfs/go-log"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/KingYoSun/indigo/lex/util"
 	cbg "github.com/whyrusleeping/cbor-gen"
 )
 
