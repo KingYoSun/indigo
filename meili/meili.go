@@ -181,6 +181,9 @@ func (s *MeiliSlurper) getRecordFromCar(ctx context.Context, feedPost *models.Fe
 }
 
 func (s *MeiliSlurper) DeleteDocument(ctx context.Context, cid string) error {
+	if cid == "" {
+		return errors.New("[Meili] failed DeleteCodument because cid is empty string")
+	}
 	if _, err := s.meili.Index("feed_posts").DeleteDocument(cid); err != nil {
 		return err
 	}
