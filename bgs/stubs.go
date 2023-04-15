@@ -25,7 +25,7 @@ func (s *BGS) RegisterHandlersComAtproto(e *echo.Echo) error {
 	e.GET("/xrpc/com.atproto.sync.listRepos", s.HandleComAtprotoSyncListRepos)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", s.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", s.HandleComAtprotoSyncRequestCrawl)
-	e.GET("/xrpc/debug.getRepo", s.HandleDebugGetRecord)
+	e.GET("/debug/getRepo", s.HandleDebugGetRecord)
 	e.GET("/meili/requestCopyRecord", s.HandleMeiliRequestCopyRecord)
 	return nil
 }
