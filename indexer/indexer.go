@@ -532,7 +532,7 @@ func (ix *Indexer) GetPostOrMissing(ctx context.Context, uri string) (*models.Fe
 	}
 
 	var post models.FeedPost
-	if err := ix.db.Find(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Model(models.ActorInfo{}).Where("did = ?", puri.Did).Select("id")).Error; err != nil {
+	if err := ix.db.Find(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Raw("SELECT id FROM users WHERE did = ? AND deleted_at IS NULL LIMIT 1", puri.Did)).Error; err != nil {
 		return nil, err
 	}
 
@@ -787,7 +787,7 @@ func (ix *Indexer) GetPost(ctx context.Context, uri string) (*models.FeedPost, e
 	}
 
 	var post models.FeedPost
-	if err := ix.db.First(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Model(models.ActorInfo{}).Where("did = ?", puri.Did).Select("id")).Error; err != nil {
+	if err := ix.db.First(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Raw("SELECT id FROM users WHERE did = ? AND deleted_at IS NULL LIMIT 1", puri.Did)).Error; err != nil {
 		return nil, err
 	}
 

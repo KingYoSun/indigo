@@ -210,10 +210,10 @@ type User struct {
 	ID        bsutil.Uid `gorm:"primarykey"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-	Handle    string         `gorm:"uniqueIndex"`
-	Did       string         `gorm:"uniqueIndex"`
-	PDS       uint
+	DeletedAt gorm.DeletedAt 	`gorm:"index"`
+	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
+	Did       string					`gorm:"uniqueIndex"`
+	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
 }
 
 type addTargetBody struct {
@@ -548,17 +548,28 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		return nil, err
 	}
 
-	// TODO: request this users info from their server to fill out our data...
-	u := User{
-		Handle: handle,
-		Did:    did,
-		PDS:    peering.ID,
+	var userExsited User
+	if err:= s.db.Find(&userExsited, "did = ?", did).Error; err != nil {
+		return nil, fmt.Errorf("failed to find users: %w", err)
 	}
 
-	if err := s.db.Create(&u).Error; err != nil {
-		// some debugging...
-		return nil, fmt.Errorf("failed to create other pds user: %w", err)
+	var u User
+	if userExsited.ID == 0 {
+		// TODO: request this users info from their server to fill out our data...
+		u = User{
+			Handle: handle,
+			Did:    did,
+			PDS:    peering.ID,
+		}
+
+		if err := s.db.Create(&u).Error; err != nil {
+			// some debugging...
+			return nil, fmt.Errorf("failed to create other pds user: %w", err)
+		}
+	} else {
+		u = userExsited
 	}
+
 
 	// okay cool, its a user on a server we are peered with
 	// lets make a local record of that user for the future
