@@ -3,7 +3,6 @@ package bgs
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 
@@ -106,65 +105,73 @@ func (s *MeiliSlurper) copyRecordsToMeili(ctx context.Context, host *models.PDS)
 
 		s.db.ScanRows(rows, &feedPost)
 
-		var user *User
-
-		if feedPost.Cid == "" || feedPost.Missing {
-			log.Errorf("[PdsToMeili] feed_post is missing")
-			continue
-		}
-
-		buf := new(bytes.Buffer)
-		targetCid, err := cid.Decode(feedPost.Cid)
-		if err != nil {
+		if err := s.feeePostToMeili(ctx, feedPost); err != nil {
 			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-
-		if err := s.db.Find(&user, "id = ?", feedPost.Author).Error; err != nil {
-			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-
-		if err := s.repoman.ReadRepoAtCid(ctx, feedPost.Author, targetCid, buf); err != nil {
-			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-
-		sliceRepo, err := repo.ReadRepoFromCar(ctx, buf)
-		if err != nil {
-			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-		rpath := "app.bsky.feed.post/" + feedPost.Rkey
-
-		_, rec, err := sliceRepo.GetRecord(ctx, rpath)
-		if err != nil {
-			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-
-		post, suc := rec.(*appbsky.FeedPost)
-		if !suc {
-			log.Errorf("[PdsToMeili] failed to deserialize post")
-			continue
-		}
-
-		document := &MeiliFeedPost{
-			Cid: 	feedPost.Cid,
-			Tid: 	"app.bsky.feed.post/" + feedPost.Rkey,
-			Post:	post,
-			User:	user,
-		}
-
-		encoded, err := json.Marshal(document)
-		if err != nil {
-			log.Errorf("[PdsToMeili] %v", err.Error())
-			continue
-		}
-
-		if _, err = s.meili.Index("feed_posts").AddDocuments(document, "cid"); err != nil {
-			log.Errorf("[PdsToMeili] %v, %s", err.Error(), encoded)
 			continue
 		}
 	}
+}
+
+func (s *MeiliSlurper) feeePostToMeili(ctx context.Context, feedPost *models.FeedPost) error {
+	if feedPost.Cid == "" || feedPost.Missing {
+		return errors.New("[PdsToMeili] feed_post is missing")
+	}
+
+	post, err := s.getRecordFromCar(ctx, feedPost)
+	if err != nil {
+		return err
+	}
+
+	var user *User
+
+	if err := s.db.Find(&user, "id = ?", feedPost.Author).Error; err != nil {
+		return err
+	}
+
+	document := &MeiliFeedPost{
+		Cid: 	feedPost.Cid,
+		Tid: 	"app.bsky.feed.post/" + feedPost.Rkey,
+		Post:	post,
+		User:	user,
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if _, err = s.meili.Index("feed_posts").AddDocuments(document, "cid"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *MeiliSlurper) getRecordFromCar(ctx context.Context, feedPost *models.FeedPost) (*appbsky.FeedPost, error) {
+	buf := new(bytes.Buffer)
+		targetCid, err := cid.Decode(feedPost.Cid)
+		if err != nil {
+			return nil, err
+		}
+
+	if err := s.repoman.ReadRepoAtCid(ctx, feedPost.Author, targetCid, buf); err != nil {
+		return nil, err
+	}
+
+	sliceRepo, err := repo.ReadRepoFromCar(ctx, buf)
+	if err != nil {
+		return nil, err
+	}
+	rpath := "app.bsky.feed.post/" + feedPost.Rkey
+
+	_, rec, err := sliceRepo.GetRecord(ctx, rpath)
+	if err != nil {
+		return nil, err
+	}
+
+	post, suc := rec.(*appbsky.FeedPost)
+	if !suc {
+		return nil, errors.New("[PdsToMeili] failed to deserialize post")
+	}
+
+	return post, nil
 }
