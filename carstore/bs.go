@@ -390,11 +390,11 @@ func (cs *CarStore) ReadUserCarAtCid(ctx context.Context, user util.Uid, decoded
 
 	if decodedCid.Defined() {
 		var targetBlock blockRef
-		if err := cs.meta.Debug().First(&targetBlock, "cid = ?", util.DbCID{decodedCid}).Error; err != nil {
+		if err := cs.meta.First(&targetBlock, "cid = ?", util.DbCID{decodedCid}).Error; err != nil {
 			return fmt.Errorf("blockref, user: %v, cid: %v, root: %v, err: %v", user, decodedCid, util.DbCID{decodedCid}, err.Error())
 		}
 		var targetShard CarShard
-		if err := cs.meta.Debug().First(&targetShard, "id = ?", targetBlock.Shard).Error; err != nil {
+		if err := cs.meta.First(&targetShard, "id = ?", targetBlock.Shard).Error; err != nil {
 			return fmt.Errorf("CarShard, user: %v, cid: %v, root: %v, err: %v", user, decodedCid, util.DbCID{decodedCid}, err.Error())
 		}
 		targetId = targetShard.ID

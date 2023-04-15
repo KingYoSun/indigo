@@ -32,6 +32,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/meilisearch/meilisearch-go"
 	promclient "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,11 +42,13 @@ import (
 var log = logging.Logger("bgs")
 
 type BGS struct {
-	Index   *indexer.Indexer
-	db      *gorm.DB
-	slurper *Slurper
-	events  *events.EventManager
-	didr    plc.DidResolver
+	Index   	*indexer.Indexer
+	db      	*gorm.DB
+	meili   	*meilisearch.Client
+	slurper 	*Slurper
+	meilislur	*MeiliSlurper
+	events  	*events.EventManager
+	didr    	plc.DidResolver
 
 	blobs blobs.BlobStore
 
@@ -58,13 +61,14 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meili *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
 	db.AutoMigrate(User{})
 	db.AutoMigrate(models.PDS{})
 
 	bgs := &BGS{
 		Index: ix,
 		db:    db,
+		meili: meili,
 
 		repoman: repoman,
 		events:  evtman,
@@ -74,6 +78,7 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtm
 
 	ix.CreateExternalUser = bgs.createExternalUser
 	bgs.slurper = NewSlurper(db, bgs.handleFedEvent, ssl)
+	bgs.meilislur = NewMeiliSlurper(db, meili, repoman)
 
 	if err := bgs.slurper.RestartAll(); err != nil {
 		return nil, err
@@ -181,6 +186,7 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", bgs.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/xrpc/debug.getRecord", bgs.HandleDebugGetRecord)
+	e.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
 
 	return e.Start(listen)

@@ -26,6 +26,7 @@ func (s *BGS) RegisterHandlersComAtproto(e *echo.Echo) error {
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", s.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", s.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/debug.getRepo", s.HandleDebugGetRecord)
+	e.GET("/meili/requestCopyRecord", s.HandleMeiliRequestCopyRecord)
 	return nil
 }
 
@@ -218,4 +219,17 @@ func (s *BGS) HandleDebugGetRecord(c echo.Context) error {
 	}
 
 	return c.JSON(200, string(out))
+}
+
+func (s *BGS) HandleMeiliRequestCopyRecord(c echo.Context) error {
+	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleComAtprotoSyncRequestCrawl")
+	defer span.End()
+	hostname := c.QueryParam("hostname")
+	// func (s *BGS) handleComAtprotoSyncRequestCrawl(ctx context.Context,hostname string) error
+	handleErr := s.handleMeiliRequestCopyRecord(ctx, hostname)
+	if handleErr != nil {
+		return handleErr
+	}
+
+	return nil
 }

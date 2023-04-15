@@ -179,3 +179,11 @@ func (s *BGS) handleDebugGetRepoJson(ctx context.Context, did string, bcid strin
 func (s *BGS) handleComAtprotoSyncListRepos(ctx context.Context, cursor string, limit int) (*comatprototypes.SyncListRepos_Output, error) {
 	panic("NYI")
 }
+
+func (s *BGS) handleMeiliRequestCopyRecord(ctx context.Context, host string) error {
+	if host == "" {
+		return fmt.Errorf("must pass valid hostname")
+	}
+
+	return s.meilislur.PdsToMeili(ctx, host, true)
+}
