@@ -263,14 +263,13 @@ func (s *BGS) HandleMeiliSearch(c echo.Context) error {
 	keyword := c.QueryParam("q")
 	hostname := c.QueryParam("h")
 	sort := c.QueryParam("s")
-
-	if sort == "" {
-		sort = ""
+	offset, err := strconv.ParseInt(c.QueryParam("o"), 10, 64)
+	if err != nil {
+		return err
 	}
 
 	var posts []interface{}
-	var err error
-	if posts, err = s.meilislur.Search(ctx, keyword, hostname, sort); err != nil {
+	if posts, err = s.meilislur.Search(ctx, keyword, hostname, sort, offset); err != nil {
 		return c.JSON(500, err.Error())
 	}
 

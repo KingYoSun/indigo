@@ -193,7 +193,7 @@ func (s *MeiliSlurper) UpdateIndexSetting(ctx context.Context, index string, set
 	return resp, err
 }
 
-func (s *MeiliSlurper) Search(ctx context.Context, keyword string, hostname string, sort string) ([]interface{}, error) {
+func (s *MeiliSlurper) Search(ctx context.Context, keyword string, hostname string, sort string, offset int64) ([]interface{}, error) {
 	var peering *models.PDS
 	var filterSet string
 	var err error
@@ -211,6 +211,8 @@ func (s *MeiliSlurper) Search(ctx context.Context, keyword string, hostname stri
 	}
 
 	resp, err := s.meili.Index("feed_posts").Search(keyword, &meilisearch.SearchRequest{
+		Offset: offset,
+		Limit: 20,
 		Filter: filterSet,
 		Sort: sortSet,
 	})
