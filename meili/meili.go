@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 
 	appbsky "github.com/KingYoSun/indigo/api/bsky"
@@ -21,10 +22,11 @@ import (
 var log = logging.Logger("meili")
 
 type MeiliFeedPost struct {
-	Cid 	string						`json:"cid"`
-	Tid		string						`json:"tid"`
-	Post	*appbsky.FeedPost	`json:"post"`
-	User	*models.User			`json:"user"`
+	Cid 			string						`json:"cid"`
+	Tid				string						`json:"tid"`
+	Post			*appbsky.FeedPost	`json:"post"`
+	User			*models.User			`json:"user"`
+	CreatedAt	int64							`json:"createdAt"`
 }
 
 type MeiliSlurper struct {
@@ -57,25 +59,16 @@ func (s *MeiliSlurper) PdsToMeili(ctx context.Context, host string, reg bool) er
 		return nil
 	}
 
-	var peering models.PDS
-	if err := s.db.Find(&peering, "host = ?", host).Error; err != nil {
+	var peering *models.PDS
+	var err error
+
+	if peering, err = s.findPDS(host, reg); err != nil {
 		return err
 	}
 
-	if peering.ID == 0 {
-		return errors.New("PDS is not found")
-	}
+	s.active[host] = peering
 
-	if !peering.Registered && reg {
-		peering.Registered = true
-		if err := s.db.Model(models.PDS{}).Where("id = ?", peering.ID).Update("registered", true).Error; err != nil {
-			return err
-		}
-	}
-
-	s.active[host] = &peering
-
-	go s.copyRecordsToMeili(ctx, &peering)
+	go s.copyRecordsToMeili(ctx, peering)
 
 	return nil
 }
@@ -137,6 +130,7 @@ func (s *MeiliSlurper) FeeePostToMeili(ctx context.Context, feedPost *models.Fee
 		Tid: 	"app.bsky.feed.post/" + feedPost.Rkey,
 		Post:	post,
 		User:	user,
+		CreatedAt: feedPost.CreatedAt.Unix(),
 	}
 
 	if err != nil {
@@ -189,4 +183,59 @@ func (s *MeiliSlurper) DeleteDocument(ctx context.Context, cid string) error {
 	}
 
 	return nil
+}
+
+func (s *MeiliSlurper) UpdateIndexSetting(ctx context.Context, index string, settings meilisearch.Settings) (*meilisearch.TaskInfo, error) {
+	resp, err := s.meili.Index(index).UpdateSettings(&settings)
+	if err != nil {
+		return nil, err
+	}
+	return resp, err
+}
+
+func (s *MeiliSlurper) Search(ctx context.Context, keyword string, hostname string, sort string) ([]interface{}, error) {
+	var peering *models.PDS
+	var filterSet string
+	var err error
+	if hostname != "" {
+		if peering, err = s.findPDS(hostname, true);err != nil {
+			return nil, err
+		}
+		filterSet = "user.PDS = " + strconv.Itoa(int(peering.ID))
+	}
+
+	var sortSet []string
+	switch sort {
+	default :
+		sortSet = append(sortSet, "createdAt:desc")
+	}
+
+	resp, err := s.meili.Index("feed_posts").Search(keyword, &meilisearch.SearchRequest{
+		Filter: filterSet,
+		Sort: sortSet,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Hits, nil
+}
+
+func (s *MeiliSlurper) findPDS(hostname string, reg bool) (*models.PDS, error) {
+	var peering *models.PDS
+	if err := s.db.Find(&peering, "host = ?", hostname).Error; err != nil {
+		return nil, err
+	}
+
+	if peering.ID == 0 {
+		return nil, errors.New("PDS is not found")
+	}
+
+	if !peering.Registered && reg {
+		peering.Registered = true
+		if err := s.db.Model(models.PDS{}).Where("id = ?", peering.ID).Update("registered", true).Error; err != nil {
+			return nil, err
+		}
+	}
+	return peering, nil
 }

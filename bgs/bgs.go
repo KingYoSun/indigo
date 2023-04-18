@@ -50,6 +50,8 @@ type BGS struct {
 	events  	*events.EventManager
 	didr    	plc.DidResolver
 
+	adminPass string
+
 	blobs blobs.BlobStore
 
 	crawlOnly bool
@@ -61,7 +63,7 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool, adminPass string) (*BGS, error) {
 	db.AutoMigrate(models.User{})
 	db.AutoMigrate(models.PDS{})
 
@@ -73,6 +75,8 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repom
 		events:  evtman,
 		didr:    didr,
 		blobs:   blobs,
+
+		adminPass: adminPass,
 	}
 
 	ix.CreateExternalUser = bgs.createExternalUser
@@ -169,12 +173,10 @@ func (bgs *BGS) Start(listen string) error {
 
 	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
 		log.Warnf("HANDLER ERROR: (%s) %s", ctx.Path(), err)
-		ctx.Response().WriteHeader(500)
+		ctx.JSON(500, err.Error())
 	}
 
 	// TODO: this API is temporary until we formalize what we want here
-
-	e.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
 
 	e.GET("/xrpc/com.atproto.sync.getCheckout", bgs.HandleComAtprotoSyncGetCheckout)
 	e.GET("/xrpc/com.atproto.sync.getCommitPath", bgs.HandleComAtprotoSyncGetCommitPath)
@@ -182,11 +184,22 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/xrpc/com.atproto.sync.getRecord", bgs.HandleComAtprotoSyncGetRecord)
 	e.GET("/xrpc/com.atproto.sync.getRepo", bgs.HandleComAtprotoSyncGetRepo)
 	e.GET("/xrpc/com.atproto.sync.getBlocks", bgs.HandleComAtprotoSyncGetBlocks)
-	e.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", bgs.HandleComAtprotoSyncNotifyOfUpdate)
-	e.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
-	e.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
+	e.GET("/meili/search", bgs.HandleMeiliSearch)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
+
+	admin := e.Group("/admin")
+	admin.Use(middleware.BasicAuth(func(username, password string, c echo.Context) (bool, error) {
+		if username == "admin" && password == bgs.adminPass {
+			return true, nil
+		}
+		return false, errors.New("Authentication failed: " + username + ":" + password)
+	}))
+	admin.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
+	admin.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
+	admin.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
+	admin.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
+	admin.POST("/meili/updateIndexSettings/:index", bgs.HandleMeiliUpdateIndexSettings)
 
 	return e.Start(listen)
 }

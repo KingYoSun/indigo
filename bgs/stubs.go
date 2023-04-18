@@ -1,11 +1,13 @@
 package bgs
 
 import (
+	"encoding/json"
 	"io"
 	"strconv"
 
 	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
 	"github.com/labstack/echo/v4"
+	"github.com/meilisearch/meilisearch-go"
 	"go.opentelemetry.io/otel"
 )
 
@@ -27,6 +29,8 @@ func (s *BGS) RegisterHandlersComAtproto(e *echo.Echo) error {
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", s.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/debug/getRepo", s.HandleDebugGetRecord)
 	e.GET("/meili/requestCopyRecord", s.HandleMeiliRequestCopyRecord)
+	e.POST("/meili/updateIndexSettings/:index", s.HandleMeiliUpdateIndexSettings)
+	e.GET("/meili/search", s.HandleMeiliSearch)
 	return nil
 }
 
@@ -222,14 +226,59 @@ func (s *BGS) HandleDebugGetRecord(c echo.Context) error {
 }
 
 func (s *BGS) HandleMeiliRequestCopyRecord(c echo.Context) error {
-	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleComAtprotoSyncRequestCrawl")
+	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliRequestCopyRecord")
 	defer span.End()
 	hostname := c.QueryParam("hostname")
 	// func (s *BGS) handleComAtprotoSyncRequestCrawl(ctx context.Context,hostname string) error
 	handleErr := s.handleMeiliRequestCopyRecord(ctx, hostname)
 	if handleErr != nil {
-		return handleErr
+		return c.JSON(500, handleErr.Error())
 	}
 
 	return nil
+}
+
+func (s *BGS) HandleMeiliUpdateIndexSettings(c echo.Context) error {
+	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliUpdateIndexSettings")
+	defer span.End()
+
+	index := c.Param("index")
+	var settings meilisearch.Settings
+	if err := c.Bind(&settings); err != nil {
+		return c.JSON(500, err.Error())
+	}
+
+	resp, err := s.meilislur.UpdateIndexSetting(ctx, index, settings)
+	if err != nil {
+		return c.JSON(500, err.Error())
+	}
+
+	return c.JSON(200, resp.Status)
+}
+
+func (s *BGS) HandleMeiliSearch(c echo.Context) error {
+	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliSearch")
+	defer span.End()
+
+	keyword := c.QueryParam("q")
+	hostname := c.QueryParam("h")
+	sort := c.QueryParam("s")
+
+	if sort == "" {
+		sort = ""
+	}
+
+	var posts []interface{}
+	var err error
+	if posts, err = s.meilislur.Search(ctx, keyword, hostname, sort); err != nil {
+		return c.JSON(500, err.Error())
+	}
+
+	var out []byte
+
+	if out, err = json.Marshal(posts); err != nil {
+		return c.JSON(500, err.Error())
+	}
+
+	return c.JSON(200, string(out))
 }

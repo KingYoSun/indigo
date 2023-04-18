@@ -116,6 +116,11 @@ func run(args []string) {
 		&cli.StringFlag{
 			Name: "disk-blob-store",
 		},
+		&cli.StringFlag{
+			Name: "admin-pass",
+			Value: "DevAdminPass",
+			EnvVars: []string{"ADMIN_PASS"},
+		},
 	}
 
 	app.Action = func(cctx *cli.Context) error {
@@ -214,7 +219,7 @@ func run(args []string) {
 			blobstore = &blobs.DiskBlobStore{bsdir}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"))
+		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"), cctx.String("admin-pass"))
 		if err != nil {
 			return err
 		}
