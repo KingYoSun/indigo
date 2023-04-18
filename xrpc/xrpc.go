@@ -98,7 +98,7 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 	}
 
 	// use admin auth if we have it configured and are doing a request that requires it
-	if c.AdminToken != nil && (strings.HasPrefix(method, "com.atproto.admin.") || method == "com.atproto.account.createInviteCode") {
+	if c.AdminToken != nil && (strings.HasPrefix(method, "com.atproto.admin.") || method == "com.atproto.account.createInviteCode" || method == "com.atproto.server.createInviteCodes") {
 		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("admin:"+*c.AdminToken)))
 	} else if c.Auth != nil {
 		req.Header.Set("Authorization", "Bearer "+c.Auth.AccessJwt)
@@ -125,9 +125,9 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 					return fmt.Errorf("reading response body: %w", err)
 				}
 			} else {
-				_, err := io.CopyN(buf, resp.Body, resp.ContentLength)
+				n, err := io.CopyN(buf, resp.Body, resp.ContentLength)
 				if err != nil {
-					return fmt.Errorf("reading length delimited response body: %w", err)
+					return fmt.Errorf("reading length delimited response body (%d < %d): %w", n, resp.ContentLength, err)
 				}
 			}
 		} else {
