@@ -171,6 +171,11 @@ func (bgs *BGS) Start(listen string) error {
 		Format: "method=${method}, uri=${uri}, status=${status} latency=${latency_human}\n",
 	}))
 
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
+	}))
+
 	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
 		log.Warnf("HANDLER ERROR: (%s) %s", ctx.Path(), err)
 		ctx.JSON(500, err.Error())

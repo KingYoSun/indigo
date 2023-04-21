@@ -263,9 +263,17 @@ func (s *BGS) HandleMeiliSearch(c echo.Context) error {
 	keyword := c.QueryParam("q")
 	hostname := c.QueryParam("h")
 	sort := c.QueryParam("s")
-	offset, err := strconv.ParseInt(c.QueryParam("o"), 10, 64)
-	if err != nil {
-		return err
+	offsetStr := c.QueryParam("o")
+
+	var offset int64
+	var err error
+	if offsetStr == "" {
+		offset = 0
+	} else {
+		offset, err = strconv.ParseInt(c.QueryParam("o"), 10, 64)
+		if err != nil {
+			return err
+		}
 	}
 
 	var posts []interface{}
