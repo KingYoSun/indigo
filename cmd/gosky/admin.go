@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bluesky-social/indigo/api"
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
+	"github.com/KingYoSun/indigo/api"
+	comatproto "github.com/KingYoSun/indigo/api/atproto"
+	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
 	cli "github.com/urfave/cli/v2"
 )
 
