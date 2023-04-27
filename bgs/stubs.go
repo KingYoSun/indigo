@@ -1,7 +1,6 @@
 package bgs
 
 import (
-	"encoding/json"
 	"io"
 	"strconv"
 
@@ -281,11 +280,5 @@ func (s *BGS) HandleMeiliSearch(c echo.Context) error {
 		return c.JSON(500, err.Error())
 	}
 
-	var out []byte
-
-	if out, err = json.Marshal(posts); err != nil {
-		return c.JSON(500, err.Error())
-	}
-
-	return c.JSON(200, string(out))
+	return c.JSON(200, posts)
 }
