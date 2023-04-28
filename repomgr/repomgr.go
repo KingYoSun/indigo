@@ -547,8 +547,14 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 		return fmt.Errorf("signature check failed: %w", err)
 	}
 
+	var lastShard *carstore.CarShard
+	lastShard, err = rm.cs.GetLastShard(ctx, uid)
+	if err != nil {
+		return err
+	}
+
 	var pcid cid.Cid
-	if prev != nil {
+	if prev != nil && lastShard.ID != 0 {
 		pcid = *prev
 	}
 

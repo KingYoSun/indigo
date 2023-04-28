@@ -258,7 +258,7 @@ func (cs *CarStore) putLastShardCache(user util.Uid, ls *CarShard) {
 	cs.lastShardCache[user] = ls
 }
 
-func (cs *CarStore) getLastShard(ctx context.Context, user util.Uid) (*CarShard, error) {
+func (cs *CarStore) GetLastShard(ctx context.Context, user util.Uid) (*CarShard, error) {
 	maybeLs := cs.checkLastShardCache(user)
 	if maybeLs != nil {
 		return maybeLs, nil
@@ -286,23 +286,23 @@ func (cs *CarStore) NewDeltaSession(ctx context.Context, user util.Uid, prev *ci
 
 	// TODO: ensure that we don't write updates on top of the wrong head
 	// this needs to be a compare and swap type operation
-	lastShard, err := cs.getLastShard(ctx, user)
+	lastShard, err := cs.GetLastShard(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	if prev != nil {
+	if prev != nil && lastShard.ID != 0 {
 		if lastShard.Root.CID != *prev {
 			fork, err := cs.checkFork(ctx, user, *prev)
 			if err != nil {
-				return nil, fmt.Errorf("failed to check carstore base mismatch for fork condition: %w", err)
+				return nil, fmt.Errorf("failed to check carstore base mismatch for fork condition: %w, mismatch: %s != %s", err, lastShard.Root.CID.String(), prev.String())
 			}
 
 			if fork {
 				return nil, fmt.Errorf("fork at %s: %w", prev.String(), ErrRepoFork)
 			}
 
-			return nil, fmt.Errorf("mismatch: %s != %s: %w", lastShard.Root.CID, prev.String(), ErrRepoBaseMismatch)
+			return nil, fmt.Errorf("mismatch: %s != %s: %w", lastShard.Root.CID.String(), prev.String(), ErrRepoBaseMismatch)
 		}
 	}
 
@@ -703,7 +703,7 @@ func (cs *CarStore) ImportSlice(ctx context.Context, uid util.Uid, prev *cid.Cid
 }
 
 func (cs *CarStore) GetUserRepoHead(ctx context.Context, user util.Uid) (cid.Cid, error) {
-	lastShard, err := cs.getLastShard(ctx, user)
+	lastShard, err := cs.GetLastShard(ctx, user)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -739,7 +739,7 @@ func (cs *CarStore) Stat(ctx context.Context, usr util.Uid) ([]UserStat, error) 
 }
 
 func (cs *CarStore) checkFork(ctx context.Context, user util.Uid, prev cid.Cid) (bool, error) {
-	lastShard, err := cs.getLastShard(ctx, user)
+	lastShard, err := cs.GetLastShard(ctx, user)
 	if err != nil {
 		return false, err
 	}
@@ -751,7 +751,7 @@ func (cs *CarStore) checkFork(ctx context.Context, user util.Uid, prev cid.Cid) 
 
 	if maybeShard.ID == lastShard.ID {
 		// somehow we are checking if a valid 'append' is a fork, seems buggy, throw an error
-		return false, fmt.Errorf("invariant broken: checked for forkiness of a valid append")
+		return false, fmt.Errorf("invariant broken: checked for forkiness of a valid append, maybeShardID: %v, maybeShardCid: %s, lastShardCid: %s", maybeShard.ID, maybeShard.Root.CID.String(), lastShard.Root.CID.String())
 	}
 
 	if maybeShard.ID == 0 {
