@@ -402,7 +402,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 				return fmt.Errorf("cannot process repo fork")
 			}
 
-			return fmt.Errorf("handle user event failed: %w", err)
+			return fmt.Errorf("handle user event failed, uid: %v, did: %s, err: %w", u.ID, u.Did, err)
 		}
 
 		// sync blobs

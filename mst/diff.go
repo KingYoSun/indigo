@@ -30,12 +30,12 @@ func DiffTrees(ctx context.Context, bs blockstore.Blockstore, from, to cid.Cid) 
 
 	fents, err := ft.getEntries(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ft.getEntries: %w", err)
 	}
 
 	tents, err := tt.getEntries(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tt.getEntries: %w", err)
 	}
 
 	var ixf, ixt int
@@ -96,7 +96,7 @@ func DiffTrees(ctx context.Context, bs blockstore.Blockstore, from, to cid.Cid) 
 		if ef.isTree() {
 			sub, err := ef.Tree.getEntries(ctx)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("ef.Tree.getEntries: %w", err)
 			}
 
 			fents = append(sub, fents[ixf+1:]...)
@@ -107,7 +107,7 @@ func DiffTrees(ctx context.Context, bs blockstore.Blockstore, from, to cid.Cid) 
 		if et.isTree() {
 			sub, err := et.Tree.getEntries(ctx)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("et.Tree.getEntries: %w", err)
 			}
 
 			tents = append(sub, tents[ixt+1:]...)
@@ -136,7 +136,7 @@ func DiffTrees(ctx context.Context, bs blockstore.Blockstore, from, to cid.Cid) 
 				})
 				return nil
 			}); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("e.Tree.WalkLeavesFrom: %w", err)
 			}
 		}
 	}
@@ -161,7 +161,7 @@ func DiffTrees(ctx context.Context, bs blockstore.Blockstore, from, to cid.Cid) 
 				})
 				return nil
 			}); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("e.Tree.WalkLeavesFrom: %w", err)
 			}
 		}
 	}
@@ -198,7 +198,7 @@ func identityDiff(ctx context.Context, bs blockstore.Blockstore, root cid.Cid) (
 		})
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("identityDiff#tt.WalkLeavesFrom: %w", err)
 	}
 	return ops, nil
 }

@@ -169,7 +169,7 @@ func (mst *MerkleSearchTree) getEntries(ctx context.Context) ([]NodeEntry, error
 	if mst.pointer != cid.Undef {
 		var nd NodeData
 		if err := mst.cst.Get(ctx, mst.pointer, &nd); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("mst.cst.Get: %w", err)
 		}
 		// NOTE(bnewbold): Typescript version computes layer in-place here, but
 		// the entriesFromNodeData() helper does that for us in golang

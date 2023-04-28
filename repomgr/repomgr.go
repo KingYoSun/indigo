@@ -560,7 +560,7 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 
 	ops, err := r.DiffSince(ctx, pcid)
 	if err != nil {
-		return fmt.Errorf("calculating operations in event: %w", err)
+		return fmt.Errorf("calculating operations in event, pcid: %t, lastShardId: %v, mst.DiffSince: %w", pcid.Defined(), lastShard.ID, err)
 	}
 	var evtops []RepoOp
 
