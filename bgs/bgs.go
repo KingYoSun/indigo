@@ -21,7 +21,7 @@ import (
 	"github.com/KingYoSun/indigo/events"
 	"github.com/KingYoSun/indigo/indexer"
 	lexutil "github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/meili"
+	meili "github.com/KingYoSun/indigo/meili"
 	"github.com/KingYoSun/indigo/models"
 	"github.com/KingYoSun/indigo/plc"
 	"github.com/KingYoSun/indigo/repomgr"
@@ -33,7 +33,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/meilisearch/meilisearch-go"
+	meilisearch "github.com/meilisearch/meilisearch-go"
 	promclient "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -63,8 +63,9 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool, adminPass string) (*BGS, error) {
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
 	db.AutoMigrate(models.User{})
+	db.AutoMigrate(AuthToken{})
 	db.AutoMigrate(models.PDS{})
 
 	bgs := &BGS{
@@ -75,13 +76,18 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client,repom
 		events:  evtman,
 		didr:    didr,
 		blobs:   blobs,
-
-		adminPass: adminPass,
 	}
 
 	ix.CreateExternalUser = bgs.createExternalUser
-	bgs.slurper = NewSlurper(db, bgs.handleFedEvent, ssl)
+
 	bgs.meilislur = meili.NewMeiliSlurper(db, meilicli, repoman)
+
+	s, err := NewSlurper(db, bgs.handleFedEvent, ssl)
+	if err != nil {
+		return nil, err
+	}
+
+	bgs.slurper = s
 
 	if err := bgs.slurper.RestartAll(); err != nil {
 		return nil, err
@@ -193,6 +199,7 @@ func (bgs *BGS) Start(listen string) error {
 
 	// TODO: this API is temporary until we formalize what we want here
 
+	e.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
 	e.GET("/xrpc/com.atproto.sync.getCheckout", bgs.HandleComAtprotoSyncGetCheckout)
 	e.GET("/xrpc/com.atproto.sync.getCommitPath", bgs.HandleComAtprotoSyncGetCommitPath)
 	e.GET("/xrpc/com.atproto.sync.getHead", bgs.HandleComAtprotoSyncGetHead)
@@ -203,13 +210,8 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/meili/search", bgs.HandleMeiliSearch)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
 
-	admin := e.Group("/admin")
-	admin.Use(middleware.BasicAuth(func(username, password string, c echo.Context) (bool, error) {
-		if username == "admin" && password == bgs.adminPass {
-			return true, nil
-		}
-		return false, errors.New("Authentication failed: " + username + ":" + password)
-	}))
+	admin := e.Group("/admin", bgs.checkAdminAuth)
+	admin.POST("/deleteRecord", bgs.handleAdminDeleteRecord)
 	admin.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
 	admin.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	admin.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
@@ -230,6 +232,62 @@ func (bgs *BGS) HandleHealthCheck(c echo.Context) error {
 		return c.JSON(500, HealthStatus{Status: "error", Message: "can't connect to database"})
 	} else {
 		return c.JSON(200, HealthStatus{Status: "ok"})
+	}
+}
+
+type AuthToken struct {
+	gorm.Model
+	Token string `gorm:"index"`
+}
+
+func (bgs *BGS) lookupAdminToken(tok string) (bool, error) {
+	var at AuthToken
+	if err := bgs.db.Find(&at, "token = ?", tok).Error; err != nil {
+		return false, err
+	}
+
+	if at.ID == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (bgs *BGS) CreateAdminToken(tok string) error {
+	exists, err := bgs.lookupAdminToken(tok)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return nil
+	}
+
+	return bgs.db.Create(&AuthToken{
+		Token: tok,
+	}).Error
+}
+
+func (bgs *BGS) checkAdminAuth(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(e echo.Context) error {
+		authheader := e.Request().Header.Get("Authorization")
+		pref := "Bearer "
+		if !strings.HasPrefix(authheader, pref) {
+			return echo.ErrForbidden
+		}
+
+		token := authheader[len(pref):]
+
+		exists, err := bgs.lookupAdminToken(token)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			return echo.ErrForbidden
+		}
+
+		return next(e)
 	}
 }
 

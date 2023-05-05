@@ -15,7 +15,7 @@ import (
 	logging "github.com/ipfs/go-log"
 
 	"github.com/ipfs/go-cid"
-	"github.com/meilisearch/meilisearch-go"
+	meilisearch "github.com/meilisearch/meilisearch-go"
 	"gorm.io/gorm"
 )
 

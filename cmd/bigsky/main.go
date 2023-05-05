@@ -117,9 +117,9 @@ func run(args []string) {
 			Name: "disk-blob-store",
 		},
 		&cli.StringFlag{
-			Name: "admin-pass",
-			Value: "DevAdminPass",
-			EnvVars: []string{"ADMIN_PASS"},
+			Name:			"admin-key",
+			Value:		"DevAdminPass",
+			EnvVars:	[]string{"BGS_ADMIN_KEY"},
 		},
 	}
 
@@ -219,9 +219,15 @@ func run(args []string) {
 			blobstore = &blobs.DiskBlobStore{bsdir}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"), cctx.String("admin-pass"))
+		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"))
 		if err != nil {
 			return err
+		}
+
+		if tok := cctx.String("admin-key"); tok != "" {
+			if err := bgs.CreateAdminToken(tok); err != nil {
+				return fmt.Errorf("failed to set up admin token: %w", err)
+			}
 		}
 
 		// set up pprof endpoint

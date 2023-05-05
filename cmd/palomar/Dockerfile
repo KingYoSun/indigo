@@ -1,6 +1,6 @@
 # Run this dockerfile from the top level of the indigo git repository like:
 #
-#   podman build -f ./cmd/beemo/Dockerfile -t beemo .
+#   podman build -f ./cmd/palomar/Dockerfile -t palomar .
 
 ### Compile stage
 FROM golang:1.20-alpine3.17 AS build-env
@@ -11,7 +11,7 @@ WORKDIR /dockerbuild
 
 # timezone data for alpine builds
 RUN GIT_VERSION=$(git describe --tags --long --always) && \
-    go build -tags timetzdata -ldflags="-X github.com/KingYoSun/indigo/version.Version=$GIT_VERSION" -o /beemo ./cmd/beemo
+    go build -tags timetzdata -ldflags="-X github.com/bluesky-social/indigo/version.Version=$GIT_VERSION"  -o /palomar ./cmd/palomar
 
 ### Run stage
 FROM alpine:3.17
@@ -20,15 +20,17 @@ RUN apk add --no-cache --update dumb-init ca-certificates
 ENTRYPOINT ["dumb-init", "--"]
 
 WORKDIR /
-RUN mkdir -p data/beemo
-COPY --from=build-env /beemo /
+RUN mkdir -p data/palomar
+COPY --from=build-env /palomar /
 
 # small things to make golang binaries work well under alpine
 ENV GODEBUG=netdns=go
 ENV TZ=Etc/UTC
 
-CMD ["/beemo"]
+EXPOSE 2470
 
-LABEL org.opencontainers.image.source=https://github.com/KingYoSun/indigo
-LABEL org.opencontainers.image.description="ATP ChatOps Bot (beemo)"
+CMD ["/palomar", "run"]
+
+LABEL org.opencontainers.image.source=https://github.com/bluesky-social/indigo
+LABEL org.opencontainers.image.description="atproto Search Service (for app.bsky Lexicon)"
 LABEL org.opencontainers.image.licenses=MIT

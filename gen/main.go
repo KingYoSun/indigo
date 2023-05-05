@@ -1,6 +1,8 @@
 package main
 
 import (
+	"reflect"
+
 	"github.com/KingYoSun/indigo/api"
 	atproto "github.com/KingYoSun/indigo/api/atproto"
 	bsky "github.com/KingYoSun/indigo/api/bsky"
@@ -9,11 +11,16 @@ import (
 	lexutil "github.com/KingYoSun/indigo/lex/util"
 	mst "github.com/KingYoSun/indigo/mst"
 	"github.com/KingYoSun/indigo/repo"
+
 	cbg "github.com/whyrusleeping/cbor-gen"
 )
 
 func main() {
-	if err := cbg.WriteMapEncodersToFile("mst/cbor_gen.go", "mst", mst.NodeData{}, mst.TreeEntry{}); err != nil {
+	var typVals []any
+	for _, typ := range mst.CBORTypes() {
+		typVals = append(typVals, reflect.New(typ).Elem().Interface())
+	}
+	if err := cbg.WriteMapEncodersToFile("mst/cbor_gen.go", "mst", typVals...); err != nil {
 		panic(err)
 	}
 
