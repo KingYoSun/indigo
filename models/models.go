@@ -43,6 +43,11 @@ type User struct {
 	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
 	Did       string					`gorm:"uniqueIndex"`
 	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
+
+	// TakenDown is set to true if the user in question has been taken down.
+	// A user in this state will have all future events related to it dropped
+	// and no data about this user will be served.
+	TakenDown bool
 }
 
 

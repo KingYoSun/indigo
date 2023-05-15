@@ -3,6 +3,7 @@
 Commands (run with, eg, `go run ./cmd/bigsky`):
 
 - `cmd/bigsky`: BGS+indexer daemon
+- `cmd/palomar`: search indexer and query servcie (OpenSearch)
 - `cmd/gosky`: client CLI for talking to a PDS
 - `cmd/lexgen`: codegen tool for lexicons (Lexicon JSON to Go package)
 - `cmd/laputa`: PDS daemon
@@ -28,6 +29,7 @@ Packages:
 - `plc`: implementation of a _fake_ PLC server (not persisted), and a PLC client
 - `repo`: implements atproto repo on top of a blockstore. CBOR types
 - `repomgr`: wraps many repos with a single carstore backend. handles events, locking
+- `search`: search server implementation
 - `testing`: integration tests; testing helpers
 - `util`: a few common definitions (may rename)
 - `xrpc`: XRPC client (not server) helpers

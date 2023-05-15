@@ -211,12 +211,14 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
 
 	admin := e.Group("/admin", bgs.checkAdminAuth)
-	admin.POST("/deleteRecord", bgs.handleAdminDeleteRecord)
 	admin.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
 	admin.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	admin.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
 	admin.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
 	admin.POST("/meili/updateIndexSettings/:index", bgs.HandleMeiliUpdateIndexSettings)
+	admin.POST("/subs/setEnabled", bgs.handleAdminSetSubsEnabled)
+	admin.POST("/repo/takeDown", bgs.handleAdminTakeDownRepo)
+	admin.POST("/repo/reverseTakedown", bgs.handleAdminReverseTakedown)
 
 	return e.Start(listen)
 }
@@ -433,6 +435,11 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 			u = new(models.User)
 			u.ID = subj.Uid
 			u.Did = evt.Repo
+		}
+
+		if u.TakenDown {
+			log.Infow("dropping event from taken down user", "did", evt.Repo, "seq", evt.Seq, "host", host.Host)
+			return nil
 		}
 
 		// TODO: if the user is already in the 'slow' path, we shouldnt even bother trying to fast path this event
@@ -679,4 +686,38 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 	}
 
 	return subj, nil
+}
+
+func (bgs *BGS) TakeDownRepo(ctx context.Context, did string) error {
+	u, err := bgs.lookupUserByDid(ctx, did)
+	if err != nil {
+		return err
+	}
+
+	if err := bgs.db.Model(models.User{}).Where("id = ?", u.ID).Update("taken_down", true).Error; err != nil {
+		return err
+	}
+
+	if err := bgs.repoman.TakeDownRepo(ctx, u.ID); err != nil {
+		return err
+	}
+
+	if err := bgs.events.TakeDownRepo(ctx, u.ID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (bgs *BGS) ReverseTakedown(ctx context.Context, did string) error {
+	u, err := bgs.lookupUserByDid(ctx, did)
+	if err != nil {
+		return err
+	}
+
+	if err := bgs.db.Model(models.User{}).Where("id = ?", u.ID).Update("taken_down", false).Error; err != nil {
+		return err
+	}
+
+	return nil
 }

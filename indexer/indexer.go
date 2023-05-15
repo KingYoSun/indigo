@@ -383,7 +383,7 @@ func (ix *Indexer) crawlRecordReferences(ctx context.Context, op *repomgr.RepoOp
 	case *bsky.ActorProfile:
 		return nil
 	default:
-		log.Warnf("unrecognized record type: %T", rec)
+		log.Warnf("unrecognized record type: %T", op.Record)
 		return nil
 	}
 }

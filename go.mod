@@ -4,7 +4,6 @@ go 1.20
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
-	github.com/bluesky-social/indigo v0.0.0-20230504025040-8915cccc3319
 	github.com/brianvoe/gofakeit/v6 v6.20.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/gorilla/websocket v1.5.0
@@ -12,8 +11,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/ipfs/go-block-format v0.1.2
 	github.com/ipfs/go-bs-sqlite3 v0.0.0-20221122195556-bfcee1be620d
-	github.com/ipfs/go-car v0.0.4
-	github.com/ipfs/go-cid v0.4.0
+	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-ds-flatfs v0.5.1
 	github.com/ipfs/go-ipfs-blockstore v1.3.0
@@ -22,7 +20,7 @@ require (
 	github.com/ipfs/go-libipfs v0.7.0
 	github.com/ipfs/go-log v1.0.5
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipld/go-car v0.6.0
+	github.com/ipld/go-car v0.6.1-0.20230509095817-92d28eb23ba4
 	github.com/ipld/go-car/v2 v2.9.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.10.2
