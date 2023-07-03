@@ -237,7 +237,7 @@ func run(args []string) {
 
 		notifman := &notifs.NullNotifs{}
 
-		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
+		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, didr, repoman, true, cctx.Bool("aggregation"))
 		if err != nil {
 			return err
 		}
