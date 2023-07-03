@@ -21,6 +21,7 @@ type Client struct {
 	AdminToken *string
 	Host       string
 	UserAgent  *string
+	Headers    map[string]string
 }
 
 func (c *Client) getClient() *http.Client {
@@ -37,6 +38,15 @@ type AuthInfo struct {
 	RefreshJwt string `json:"refreshJwt"`
 	Handle     string `json:"handle"`
 	Did        string `json:"did"`
+}
+
+type XRPCError struct {
+	ErrStr  string `json:"error"`
+	Message string `json:"message"`
+}
+
+func (xe *XRPCError) Error() string {
+	return fmt.Sprintf("%s: %s", xe.ErrStr, xe.Message)
 }
 
 const (
@@ -104,6 +114,12 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 		req.Header.Set("User-Agent", "indigo/"+version.Version)
 	}
 
+	if c.Headers != nil {
+		for k, v := range c.Headers {
+			req.Header.Set(k, v)
+		}
+	}
+
 	// use admin auth if we have it configured and are doing a request that requires it
 	if c.AdminToken != nil && (strings.HasPrefix(method, "com.atproto.admin.") || method == "com.atproto.account.createInviteCode" || method == "com.atproto.server.createInviteCodes") {
 		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("admin:"+*c.AdminToken)))
@@ -119,10 +135,11 @@ func (c *Client) Do(ctx context.Context, kind XRPCRequestType, inpenc string, me
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		var i interface{}
-		_ = json.NewDecoder(resp.Body).Decode(&i)
-		//fmt.Println(i)
-		return fmt.Errorf("XRPC ERROR %d: %s", resp.StatusCode, resp.Status)
+		var xe XRPCError
+		if err := json.NewDecoder(resp.Body).Decode(&xe); err != nil {
+			return fmt.Errorf("failed to decode xrpc error message (status: %d): %w", resp.StatusCode, err)
+		}
+		return fmt.Errorf("XRPC ERROR %d: %w", resp.StatusCode, &xe)
 	}
 
 	if out != nil {

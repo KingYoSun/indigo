@@ -120,11 +120,12 @@ type FollowRecord struct {
 type PDS struct {
 	gorm.Model
 
-	Host       	string
-	Did        	string
-	SSL        	bool
-	Cursor     	int64
-	Registered 	bool
+	Host       string
+	Did        string
+	SSL        bool
+	Cursor     int64
+	Registered bool
+	Blocked    bool
 }
 
 func ClientForPds(pds *PDS) *xrpc.Client {
@@ -152,4 +153,9 @@ type Label struct {
 	RepoRKey  *string `gorm:"uniqueIndex:idx_src_rkey"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type DomainBan struct {
+	gorm.Model
+	Domain string
 }

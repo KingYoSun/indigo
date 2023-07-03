@@ -23,6 +23,7 @@ var adminCmd = &cli.Command{
 		checkUserCmd,
 		reportsCmd,
 		disableInvitesCmd,
+		enableInvitesCmd,
 	},
 }
 
@@ -56,7 +57,9 @@ var checkUserCmd = &cli.Command{
 
 		ctx := context.Background()
 
-		resp, err := atproto.IdentityResolveHandle(ctx, xrpcc, cctx.Args().First())
+		phr := &api.ProdHandleResolver{}
+
+		rdid, err := phr.ResolveHandleToDid(ctx, cctx.Args().First())
 		if err != nil {
 			return fmt.Errorf("resolve handle %q: %w", cctx.Args().First(), err)
 		}
@@ -64,9 +67,9 @@ var checkUserCmd = &cli.Command{
 		adminKey := cctx.String("admin-password")
 		xrpcc.AdminToken = &adminKey
 
-		rep, err := atproto.AdminGetRepo(ctx, xrpcc, resp.Did)
+		rep, err := atproto.AdminGetRepo(ctx, xrpcc, rdid)
 		if err != nil {
-			return fmt.Errorf("getRepo %s: %w", resp.Did, err)
+			return fmt.Errorf("getRepo %s: %w", rdid, err)
 		}
 
 		b, err := json.MarshalIndent(rep, "", "  ")
@@ -74,7 +77,7 @@ var checkUserCmd = &cli.Command{
 			return err
 		}
 
-		plcc := cliutil.GetPLCClient(cctx)
+		plcc := cliutil.GetDidResolver(cctx)
 
 		if cctx.Bool("raw") {
 			fmt.Println(string(b))
@@ -90,7 +93,7 @@ var checkUserCmd = &cli.Command{
 				if fa == "admin" {
 					invby = fa
 				} else {
-					handle, _, err := api.ResolveDidToHandle(ctx, xrpcc, plcc, fa)
+					handle, _, err := api.ResolveDidToHandle(ctx, xrpcc, plcc, phr, fa)
 					if err != nil {
 						return fmt.Errorf("resolve did %q: %w", fa, err)
 					}
@@ -363,6 +366,13 @@ var listReportsCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name: "raw",
 		},
+		&cli.BoolFlag{
+			Name:  "resolved",
+			Value: true,
+		},
+		&cli.BoolFlag{
+			Name: "template-output",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		xrpcc, err := cliutil.GetXrpcClient(cctx, false)
@@ -375,7 +385,7 @@ var listReportsCmd = &cli.Command{
 		adminKey := cctx.String("admin-password")
 		xrpcc.AdminToken = &adminKey
 
-		resp, err := atproto.AdminGetModerationReports(ctx, xrpcc, "", "", 100, true, "")
+		resp, err := atproto.AdminGetModerationReports(ctx, xrpcc, "", "", 100, cctx.Bool("resolved"), "")
 		if err != nil {
 			return err
 		}
@@ -429,17 +439,56 @@ var disableInvitesCmd = &cli.Command{
 		adminKey := cctx.String("admin-password")
 		xrpcc.AdminToken = &adminKey
 
+		phr := &api.ProdHandleResolver{}
 		handle := cctx.Args().First()
 		if !strings.HasPrefix(handle, "did:") {
-			resp, err := atproto.IdentityResolveHandle(ctx, xrpcc, handle)
+			resp, err := phr.ResolveHandleToDid(ctx, handle)
 			if err != nil {
 				return err
 			}
 
-			handle = resp.Did
+			handle = resp
 		}
 
 		return atproto.AdminDisableAccountInvites(ctx, xrpcc, &atproto.AdminDisableAccountInvites_Input{
+			Account: handle,
+		})
+	},
+}
+
+var enableInvitesCmd = &cli.Command{
+	Name: "enableInvites",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:     "admin-password",
+			EnvVars:  []string{"ATP_AUTH_ADMIN_PASSWORD"},
+			Required: true,
+		},
+	},
+	Action: func(cctx *cli.Context) error {
+
+		xrpcc, err := cliutil.GetXrpcClient(cctx, false)
+		if err != nil {
+			return err
+		}
+
+		ctx := context.Background()
+
+		adminKey := cctx.String("admin-password")
+		xrpcc.AdminToken = &adminKey
+
+		handle := cctx.Args().First()
+		if !strings.HasPrefix(handle, "did:") {
+			phr := &api.ProdHandleResolver{}
+			resp, err := phr.ResolveHandleToDid(ctx, handle)
+			if err != nil {
+				return err
+			}
+
+			handle = resp
+		}
+
+		return atproto.AdminEnableAccountInvites(ctx, xrpcc, &atproto.AdminEnableAccountInvites_Input{
 			Account: handle,
 		})
 	},

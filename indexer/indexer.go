@@ -9,7 +9,7 @@ import (
 
 	comatproto "github.com/KingYoSun/indigo/api/atproto"
 	bsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/carstore"
+	"github.com/KingYoSun/indigo/did"
 	"github.com/KingYoSun/indigo/events"
 	lexutil "github.com/KingYoSun/indigo/lex/util"
 	"github.com/KingYoSun/indigo/meili"
@@ -31,6 +31,9 @@ import (
 
 var log = logging.Logger("indexer")
 
+const MaxEventSliceLength = 1000000
+const MaxOpsSliceLength = 200
+
 type Indexer struct {
 	db *gorm.DB
 
@@ -38,7 +41,7 @@ type Indexer struct {
 
 	notifman notifs.NotificationManager
 	events   *events.EventManager
-	didr     plc.DidResolver
+	didr     did.Resolver
 
 	// TODO: i feel like the repomgr doesnt belong here
 	repomgr *repomgr.RepoManager
@@ -47,11 +50,12 @@ type Indexer struct {
 
 	doAggregations bool
 
-	SendRemoteFollow   func(context.Context, string, uint) error
-	CreateExternalUser func(context.Context, string) (*models.ActorInfo, error)
+	SendRemoteFollow       func(context.Context, string, uint) error
+	CreateExternalUser     func(context.Context, string) (*models.ActorInfo, error)
+	ApplyPDSClientSettings func(*xrpc.Client)
 }
 
-func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr plc.DidResolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
+func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr plc.PLCClient, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
 	db.AutoMigrate(&models.FeedPost{})
 	db.AutoMigrate(&models.ActorInfo{})
 	db.AutoMigrate(&models.FollowRecord{})
@@ -68,6 +72,7 @@ func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.Notif
 		SendRemoteFollow: func(context.Context, string, uint) error {
 			return nil
 		},
+		ApplyPDSClientSettings: func(*xrpc.Client) {},
 	}
 
 	ix.meili = meili.NewMeiliSlurper(db, meilicli, repoman)
@@ -112,10 +117,10 @@ func (ix *Indexer) HandleRepoEvent(ctx context.Context, evt *repomgr.RepoEvent) 
 
 	toobig := false
 	slice := evt.RepoSlice
-	if len(slice) > carstore.MaxSliceLength {
+	if len(slice) > MaxEventSliceLength || len(outops) > MaxOpsSliceLength {
 		slice = nil
+		outops = nil
 		toobig = true
-
 	}
 
 	if evt.Rebase {
@@ -382,6 +387,12 @@ func (ix *Indexer) crawlRecordReferences(ctx context.Context, op *repomgr.RepoOp
 		}
 		return nil
 	case *bsky.GraphFollow:
+		_, err := ix.GetUserOrMissing(ctx, rec.Subject)
+		if err != nil {
+			log.Infow("failed to crawl follow subject", "cid", op.RecCid, "subjectdid", rec.Subject, "err", err)
+		}
+		return nil
+	case *bsky.GraphBlock:
 		_, err := ix.GetUserOrMissing(ctx, rec.Subject)
 		if err != nil {
 			log.Infow("failed to crawl follow subject", "cid", op.RecCid, "subjectdid", rec.Subject, "err", err)
@@ -849,7 +860,7 @@ func (ix *Indexer) FetchAndIndexRepo(ctx context.Context, job *crawlWork) error 
 
 	curHead, err := ix.repomgr.GetRepoRoot(ctx, ai.Uid)
 	if err != nil && !isNotFound(err) {
-		return err
+		return fmt.Errorf("failed to get repo root: %w", err)
 	}
 
 	var rebase *comatproto.SyncSubscribeRepos_Commit
@@ -869,7 +880,10 @@ func (ix *Indexer) FetchAndIndexRepo(ctx context.Context, job *crawlWork) error 
 	}
 
 	if rebase != nil {
-		return ix.repomgr.HandleRebase(ctx, ai.PDS, ai.Uid, ai.Did, (*cid.Cid)(rebase.Prev), (cid.Cid)(rebase.Commit), rebase.Blocks)
+		if err := ix.repomgr.HandleRebase(ctx, ai.PDS, ai.Uid, ai.Did, (*cid.Cid)(rebase.Prev), (cid.Cid)(rebase.Commit), rebase.Blocks); err != nil {
+			return fmt.Errorf("handling rebase: %w", err)
+		}
+		return nil
 	}
 
 	var host string
@@ -881,6 +895,8 @@ func (ix *Indexer) FetchAndIndexRepo(ctx context.Context, job *crawlWork) error 
 	c := &xrpc.Client{
 		Host: host,
 	}
+
+	ix.ApplyPDSClientSettings(c)
 
 	var from string
 	if curHead.Defined() {

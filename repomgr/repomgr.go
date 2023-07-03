@@ -13,7 +13,6 @@ import (
 	bsky "github.com/KingYoSun/indigo/api/bsky"
 	"github.com/KingYoSun/indigo/carstore"
 	lexutil "github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/models"
 	"github.com/KingYoSun/indigo/mst"
 	"github.com/KingYoSun/indigo/repo"
 	"github.com/KingYoSun/indigo/util"
@@ -426,13 +425,10 @@ func (rm *RepoManager) InitNewActor(ctx context.Context, user util.Uid, handle, 
 			User:    user,
 			NewRoot: root,
 			Ops: []RepoOp{{
-				Kind: EvtKindInitActor,
-				ActorInfo: &ActorInfo{
-					Did:         did,
-					Handle:      handle,
-					DisplayName: displayname,
-					Type:        actortype,
-				},
+				Kind:       EvtKindCreateRecord,
+				Collection: "app.bsky.actor.profile",
+				Rkey:       "self",
+				Record:     profile,
 			}},
 			RepoSlice: rslice,
 		})
@@ -537,7 +533,7 @@ func (rm *RepoManager) HandleRebase(ctx context.Context, pdsid uint, uid util.Ui
 	// TODO: do we allow prev to be nil in any case here?
 	if prev != nil {
 		if *prev != head {
-			log.Errorw("rebase 'prev' value did not match our latest head for repo", "did", did, "rprev", prev.String(), "lprev", head.String())
+			log.Warnw("rebase 'prev' value did not match our latest head for repo", "did", did, "rprev", prev.String(), "lprev", head.String())
 		}
 	}
 
@@ -661,6 +657,9 @@ func (rm *RepoManager) DoRebase(ctx context.Context, uid util.Uid) error {
 }
 
 func (rm *RepoManager) CheckRepoSig(ctx context.Context, r *repo.Repo, expdid string) error {
+	ctx, span := otel.Tracer("repoman").Start(ctx, "CheckRepoSig")
+	defer span.End()
+
 	repoDid := r.RepoDid()
 	if expdid != repoDid {
 		return fmt.Errorf("DID in repo did not match (%q != %q)", expdid, repoDid)
@@ -680,7 +679,7 @@ func (rm *RepoManager) CheckRepoSig(ctx context.Context, r *repo.Repo, expdid st
 	return nil
 }
 
-func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, uid util.Uid, did string, prev *cid.Cid, carslice []byte) error {
+func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, uid util.Uid, did string, prev *cid.Cid, carslice []byte, ops []*atproto.SyncSubscribeRepos_RepoOp) error {
 	ctx, span := otel.Tracer("repoman").Start(ctx, "HandleExternalUserEvent")
 	defer span.End()
 
@@ -703,50 +702,17 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 		return err
 	}
 
-	var lastShard *carstore.CarShard
-	lastShard, err = rm.cs.GetLastShard(ctx, uid)
-	if err != nil {
-		return err
-	}
-
-	var pcid cid.Cid
-	if prev != nil && lastShard.ID != 0 {
-		pcid = *prev
-	}
-
-	ops, err := r.DiffSince(ctx, pcid)
-	if err != nil {
-		return fmt.Errorf("calculating operations in event, pcid: %t, lastShardId: %v, mst.DiffSince: %w", pcid.Defined(), lastShard.ID, err)
-	}
 	var evtops []RepoOp
 
-	if prev == nil {
-		// send an implicit init actor event
-		var ai models.ActorInfo
-		if err := rm.db.First(&ai, "uid = ?", uid).Error; err != nil {
-			return fmt.Errorf("expected initialized user: %w", err)
-		}
-
-		evtops = append(evtops, RepoOp{
-			Kind: EvtKindInitActor,
-			ActorInfo: &ActorInfo{
-				Did:         ai.Did,
-				Handle:      ai.Handle,
-				DisplayName: ai.DisplayName,
-				Type:        ai.Type,
-			},
-		})
-	}
-
 	for _, op := range ops {
-		parts := strings.SplitN(op.Rpath, "/", 2)
+		parts := strings.SplitN(op.Path, "/", 2)
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid rpath in mst diff, must have collection and rkey")
 		}
 
-		switch op.Op {
-		case "add":
-			recid, rec, err := r.GetRecord(ctx, op.Rpath)
+		switch EventKind(op.Action) {
+		case EvtKindCreateRecord:
+			recid, rec, err := r.GetRecord(ctx, op.Path)
 			if err != nil {
 				return fmt.Errorf("reading changed record from car slice: %w", err)
 			}
@@ -758,25 +724,8 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 				Record:     rec,
 				RecCid:     &recid,
 			})
-			/*
-				case EvtKindInitActor:
-					var ai models.ActorInfo
-					if err := rm.db.First(&ai, "id = ?", uid).Error; err != nil {
-						return fmt.Errorf("expected initialized user: %w", err)
-					}
-
-					evtops = append(evtops, RepoOp{
-						Kind: EvtKindInitActor,
-						ActorInfo: &ActorInfo{
-							Did:         ai.Did,
-							Handle:      ai.Handle,
-							DisplayName: ai.DisplayName,
-							Type:        ai.Type,
-						},
-					})
-			*/
-		case "mut":
-			recid, rec, err := r.GetRecord(ctx, op.Rpath)
+		case EvtKindUpdateRecord:
+			recid, rec, err := r.GetRecord(ctx, op.Path)
 			if err != nil {
 				return fmt.Errorf("reading changed record from car slice: %w", err)
 			}
@@ -788,14 +737,14 @@ func (rm *RepoManager) HandleExternalUserEvent(ctx context.Context, pdsid uint, 
 				Record:     rec,
 				RecCid:     &recid,
 			})
-		case "del":
+		case EvtKindDeleteRecord:
 			evtops = append(evtops, RepoOp{
 				Kind:       EvtKindDeleteRecord,
 				Collection: parts[0],
 				Rkey:       parts[1],
 			})
 		default:
-			return fmt.Errorf("unrecognized external user event kind: %q", op.Op)
+			return fmt.Errorf("unrecognized external user event kind: %q", op.Action)
 		}
 	}
 
@@ -1002,10 +951,6 @@ func (rm *RepoManager) ImportNewRepo(ctx context.Context, user util.Uid, repoDid
 		slice, err := finish(ctx)
 		if err != nil {
 			return err
-		}
-
-		if len(slice) > carstore.MaxSliceLength {
-			log.Warnw("output slice too large", "len", len(slice), "user", user, "old", old, "new", nu)
 		}
 
 		if err := rm.updateUserRepoHead(ctx, user, nu); err != nil {

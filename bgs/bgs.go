@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"contrib.go.opencensus.io/exporter/prometheus"
+	"github.com/KingYoSun/indigo/api"
 	atproto "github.com/KingYoSun/indigo/api/atproto"
 	comatproto "github.com/KingYoSun/indigo/api/atproto"
 	"github.com/KingYoSun/indigo/blobs"
@@ -21,7 +23,7 @@ import (
 	"github.com/KingYoSun/indigo/events"
 	"github.com/KingYoSun/indigo/indexer"
 	lexutil "github.com/KingYoSun/indigo/lex/util"
-	meili "github.com/KingYoSun/indigo/meili"
+	"github.com/KingYoSun/indigo/meili"
 	"github.com/KingYoSun/indigo/models"
 	"github.com/KingYoSun/indigo/plc"
 	"github.com/KingYoSun/indigo/repomgr"
@@ -42,17 +44,29 @@ import (
 
 var log = logging.Logger("bgs")
 
+// serverListenerBootTimeout is how long to wait for the requested server socket
+// to become available for use. This is an arbitrary timeout that should be safe
+// on any platform, but there's no great way to weave this timeout without
+// adding another parameter to the (at time of writing) long signature of
+// NewServer.
+const serverListenerBootTimeout = 5 * time.Second
+
 type BGS struct {
 	Index   	*indexer.Indexer
 	db      	*gorm.DB
 	slurper 	*Slurper
 	meilislur	*meili.MeiliSlurper
 	events  	*events.EventManager
-	didr    	plc.DidResolver
+	didr    	plc.PLCClient
 
 	adminPass string
 
 	blobs blobs.BlobStore
+	hr    api.HandleResolver
+
+	// TODO: work on doing away with this flag in favor of more pluggable
+	// pieces that abstract the need for explicit ssl checks
+	ssl bool
 
 	crawlOnly bool
 
@@ -63,15 +77,17 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.DidResolver, blobs blobs.BlobStore, ssl bool) (*BGS, error) {
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.PLCClient, blobs blobs.BlobStore, hr api.HandleResolver, ssl bool) (*BGS, error) {
 	db.AutoMigrate(models.User{})
 	db.AutoMigrate(AuthToken{})
 	db.AutoMigrate(models.PDS{})
+	db.AutoMigrate(models.DomainBan{})
 
 	bgs := &BGS{
 		Index: ix,
 		db:    db,
 
+		hr:      hr,
 		repoman: repoman,
 		events:  evtman,
 		didr:    didr,
@@ -129,6 +145,23 @@ func (bgs *BGS) StartDebug(listen string) error {
 
 		json.NewEncoder(w).Encode(out)
 	})
+	http.HandleFunc("/repodbg/crawl", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		did := r.FormValue("did")
+
+		act, err := bgs.Index.GetUserOrMissing(ctx, did)
+		if err != nil {
+			w.WriteHeader(500)
+			log.Errorf("failed to get user: %s", err)
+			return
+		}
+
+		if err := bgs.Index.Crawler.Crawl(ctx, act); err != nil {
+			w.WriteHeader(500)
+			log.Errorf("failed to add user to crawler: %s", err)
+			return
+		}
+	})
 	http.HandleFunc("/repodbg/blocks", func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		did := r.FormValue("did")
@@ -162,14 +195,25 @@ func (bgs *BGS) StartDebug(listen string) error {
 
 		w.WriteHeader(200)
 		w.Write(blk.RawData())
-
 	})
 	http.Handle("/prometheus", prometheusHandler())
 
 	return http.ListenAndServe(listen, nil)
 }
 
-func (bgs *BGS) Start(listen string) error {
+func (bgs *BGS) Start(addr string) error {
+	var lc net.ListenConfig
+	ctx, cancel := context.WithTimeout(context.Background(), serverListenerBootTimeout)
+	defer cancel()
+
+	li, err := lc.Listen(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	return bgs.StartWithListener(li)
+}
+
+func (bgs *BGS) StartWithListener(listen net.Listener) error {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -183,8 +227,25 @@ func (bgs *BGS) Start(listen string) error {
 	}))
 
 	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
-		log.Warnf("HANDLER ERROR: (%s) %s", ctx.Path(), err)
-		ctx.JSON(500, err.Error())
+		switch err := err.(type) {
+		case *echo.HTTPError:
+			if err2 := ctx.JSON(err.Code, map[string]any{
+				"error": err.Message,
+			}); err2 != nil {
+				log.Errorf("Failed to write http error: %s", err2)
+			}
+		default:
+			sendHeader := true
+			if ctx.Path() == "/xrpc/com.atproto.sync.subscribeRepos" {
+				sendHeader = false
+			}
+
+			log.Warnf("HANDLER ERROR: (%s) %s", ctx.Path(), err)
+
+			if sendHeader {
+				ctx.Response().WriteHeader(500)
+			}
+		}
 	}
 
 	// TODO: this API is temporary until we formalize what we want here
@@ -196,6 +257,8 @@ func (bgs *BGS) Start(listen string) error {
 	e.GET("/xrpc/com.atproto.sync.getRecord", bgs.HandleComAtprotoSyncGetRecord)
 	e.GET("/xrpc/com.atproto.sync.getRepo", bgs.HandleComAtprotoSyncGetRepo)
 	e.GET("/xrpc/com.atproto.sync.getBlocks", bgs.HandleComAtprotoSyncGetBlocks)
+	e.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
+	e.POST("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", bgs.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/meili/search", bgs.HandleMeiliSearch)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
@@ -209,10 +272,17 @@ func (bgs *BGS) Start(listen string) error {
 	admin.POST("/subs/setEnabled", bgs.handleAdminSetSubsEnabled)
 	admin.GET("/subs/getUpstreamConns", bgs.handleAdminGetUpstreamConns)
 	admin.POST("/subs/killUpstream", bgs.handleAdminKillUpstreamConn)
+	admin.GET("/subs/listDomainBans", bgs.handleAdminListDomainBans)
+	admin.POST("/subs/banDomain", bgs.handleAdminBanDomain)
 	admin.POST("/repo/takeDown", bgs.handleAdminTakeDownRepo)
 	admin.POST("/repo/reverseTakedown", bgs.handleAdminReverseTakedown)
 
-	return e.Start(listen)
+	// In order to support booting on random ports in tests, we need to tell the
+	// Echo instance it's already got a port, and then use its StartServer
+	// method to re-use that listener.
+	e.Listener = listen
+	srv := &http.Server{}
+	return e.StartServer(srv)
 }
 
 type HealthStatus struct {
@@ -384,6 +454,53 @@ func prometheusHandler() http.Handler {
 	return exporter
 }
 
+// domainIsBanned checks if the given host is banned, starting with the host
+// itself, then checking every parent domain up to the tld
+func (s *BGS) domainIsBanned(ctx context.Context, host string) (bool, error) {
+	// ignore ports when checking for ban status
+	hostport := strings.Split(host, ":")
+
+	segments := strings.Split(hostport[0], ".")
+
+	// TODO: use normalize method once that merges
+	var cleaned []string
+	for _, s := range segments {
+		if s == "" {
+			continue
+		}
+		s = strings.ToLower(s)
+
+		cleaned = append(cleaned, s)
+	}
+	segments = cleaned
+
+	for i := 0; i < len(segments)-1; i++ {
+		dchk := strings.Join(segments[i:], ".")
+		found, err := s.findDomainBan(ctx, dchk)
+		if err != nil {
+			return false, err
+		}
+
+		if found {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *BGS) findDomainBan(ctx context.Context, host string) (bool, error) {
+	var db models.DomainBan
+	if err := s.db.Find(&db, "domain = ?", host).Error; err != nil {
+		return false, err
+	}
+
+	if db.ID == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (bgs *BGS) lookupUserByDid(ctx context.Context, did string) (*models.User, error) {
 	var u models.User
 	if err := bgs.db.Find(&u, "did = ?", did).Error; err != nil {
@@ -412,7 +529,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 	switch {
 	case env.RepoCommit != nil:
 		evt := env.RepoCommit
-		log.Infof("bgs got repo append event %d from %q: %s\n", evt.Seq, host.Host, evt.Repo)
+		log.Infow("bgs got repo append event", "seq", evt.Seq, "host", host.Host, "repo", evt.Repo)
 		u, err := bgs.lookupUserByDid(ctx, evt.Repo)
 		if err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -444,7 +561,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 			return bgs.Index.Crawler.AddToCatchupQueue(ctx, host, ai, evt)
 		}
 
-		if err := bgs.repoman.HandleExternalUserEvent(ctx, host.ID, u.ID, u.Did, (*cid.Cid)(evt.Prev), evt.Blocks); err != nil {
+		if err := bgs.repoman.HandleExternalUserEvent(ctx, host.ID, u.ID, u.Did, (*cid.Cid)(evt.Prev), evt.Blocks, evt.Ops); err != nil {
 			log.Warnw("failed handling event", "err", err, "host", host.Host, "seq", evt.Seq, "repo", u.Did, "prev", stringLink(evt.Prev), "commit", evt.Commit.String())
 
 			if errors.Is(err, carstore.ErrRepoBaseMismatch) {
@@ -508,7 +625,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 
 func (s *BGS) syncUserBlobs(ctx context.Context, pds *models.PDS, user bsutil.Uid, blobs []string) error {
 	if s.blobs == nil {
-		log.Infof("blob syncing disabled")
+		log.Debugf("blob syncing disabled")
 		return nil
 	}
 
@@ -519,6 +636,7 @@ func (s *BGS) syncUserBlobs(ctx context.Context, pds *models.PDS, user bsutil.Ui
 
 	for _, b := range blobs {
 		c := models.ClientForPds(pds)
+		s.Index.ApplyPDSClientSettings(c)
 		blob, err := atproto.SyncGetBlob(ctx, c, b, did)
 		if err != nil {
 			return fmt.Errorf("fetching blob (%s, %s): %w", did, b, err)
@@ -564,7 +682,21 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		return nil, err
 	}
 
+	if peering.Blocked {
+		return nil, fmt.Errorf("refusing to create user with blocked PDS")
+	}
+
+	ban, err := s.domainIsBanned(ctx, durl.Host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check pds ban status: %w", err)
+	}
+
+	if ban {
+		return nil, fmt.Errorf("cannot create user on pds with banned domain")
+	}
+
 	c := &xrpc.Client{Host: durl.String()}
+	s.Index.ApplyPDSClientSettings(c)
 
 	if peering.ID == 0 {
 		// TODO: the case of handling a new user on a new PDS probably requires more thought
@@ -580,6 +712,10 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		// TODO: could check other things, a valid response is good enough for now
 		peering.Host = durl.Host
 		peering.SSL = (durl.Scheme == "https")
+
+		if s.ssl != peering.SSL {
+			return nil, fmt.Errorf("did references non-ssl PDS, this is disallowed in prod: %q %q", did, svc.ServiceEndpoint)
+		}
 
 		if err := s.db.Create(&peering).Error; err != nil {
 			return nil, err
@@ -601,13 +737,13 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 
 	handle := hurl.Host
 
-	res, err := atproto.IdentityResolveHandle(ctx, c, handle)
+	resdid, err := s.hr.ResolveHandleToDid(ctx, handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve users claimed handle (%q) on pds: %w", handle, err)
 	}
 
-	if res.Did != did {
-		return nil, fmt.Errorf("claimed handle did not match servers response (%s != %s)", res.Did, did)
+	if resdid != did {
+		return nil, fmt.Errorf("claimed handle did not match servers response (%s != %s)", resdid, did)
 	}
 
 	s.extUserLk.Lock()
@@ -626,7 +762,7 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 
 		if exu.Handle != handle {
 			// Users handle has changed, update
-			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("handle", peering.ID).Error; err != nil {
+			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("handle", handle).Error; err != nil {
 				return nil, fmt.Errorf("failed to update users handle: %w", err)
 			}
 

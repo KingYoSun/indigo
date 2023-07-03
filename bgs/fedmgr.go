@@ -108,6 +108,10 @@ func (s *Slurper) SubscribeToPds(ctx context.Context, host string, reg bool) err
 		return err
 	}
 
+	if peering.Blocked {
+		return fmt.Errorf("cannot subscribe to blocked pds")
+	}
+
 	if peering.ID == 0 {
 		// New PDS!
 		npds := models.PDS{
@@ -193,9 +197,19 @@ func (s *Slurper) subscribeWithRedialer(ctx context.Context, host *models.PDS) {
 		url := fmt.Sprintf("%s://%s/xrpc/com.atproto.sync.subscribeRepos?cursor=%d", protocol, host.Host, cursor)
 		con, res, err := d.DialContext(ctx, url, nil)
 		if err != nil {
-			log.Warnf("dialing %q failed: %s", host.Host, err)
+			log.Warnw("dialing failed", "host", host.Host, "err", err, "backoff", backoff)
 			time.Sleep(sleepForBackoff(backoff))
 			backoff++
+
+			if backoff > 15 {
+				log.Warnw("pds does not appear to be online, disabling for now", "host", host.Host)
+				if err := s.db.Model(&models.PDS{}).Where("id = ?", host.ID).Update("registered", false).Error; err != nil {
+					log.Errorf("failed to unregister failing pds: %w", err)
+				}
+
+				return
+			}
+
 			continue
 		}
 
@@ -231,9 +245,9 @@ func (s *Slurper) handleConnection(ctx context.Context, host *models.PDS, con *w
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return events.HandleRepoStream(ctx, con, &events.RepoStreamCallbacks{
+	rsc := &events.RepoStreamCallbacks{
 		RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
-			log.Infow("got remote repo event", "host", host.Host, "repo", evt.Repo, "seq", evt.Seq)
+			log.Debugw("got remote repo event", "host", host.Host, "repo", evt.Repo, "seq", evt.Seq)
 			if err := s.cb(context.TODO(), host, &events.XRPCStreamEvent{
 				RepoCommit: evt,
 			}); err != nil {
@@ -298,9 +312,22 @@ func (s *Slurper) handleConnection(ctx context.Context, host *models.PDS, con *w
 		},
 		// TODO: all the other event types (handle change, migration, etc)
 		Error: func(errf *events.ErrorFrame) error {
-			return fmt.Errorf("error frame: %s: %s", errf.Error, errf.Message)
+			switch errf.Error {
+			case "FutureCursor":
+				// if we get a FutureCursor frame, reset our sequence number for this host
+				if err := s.db.Table("pds").Where("id = ?", host.ID).Update("cursor", 0).Error; err != nil {
+					return err
+				}
+
+				return fmt.Errorf("got FutureCursor frame, reset cursor tracking for host")
+			default:
+				return fmt.Errorf("error frame: %s: %s", errf.Error, errf.Message)
+			}
 		},
-	})
+	}
+
+	// TODO: probably make this use the parallel handler after some thought
+	return events.HandleRepoStream(ctx, con, &events.SequentialScheduler{rsc.EventHandler})
 }
 
 func (s *Slurper) updateCursor(host *models.PDS, curs int64) error {
@@ -320,7 +347,7 @@ func (s *Slurper) GetActiveList() []string {
 
 var ErrNoActiveConnection = fmt.Errorf("no active connection to host")
 
-func (s *Slurper) KillUpstreamConnection(host string) error {
+func (s *Slurper) KillUpstreamConnection(host string, block bool) error {
 	s.lk.Lock()
 	defer s.lk.Unlock()
 
@@ -328,7 +355,13 @@ func (s *Slurper) KillUpstreamConnection(host string) error {
 	if !ok {
 		return fmt.Errorf("killing connection %q: %w", host, ErrNoActiveConnection)
 	}
-
 	ac.cancel()
+
+	if block {
+		if err := s.db.Model(models.PDS{}).Where("id = ?", ac.pds.ID).UpdateColumn("blocked", true).Error; err != nil {
+			return fmt.Errorf("failed to set host as blocked: %w", err)
+		}
+	}
+
 	return nil
 }

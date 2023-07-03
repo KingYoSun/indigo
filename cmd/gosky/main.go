@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KingYoSun/indigo/api"
 	"github.com/KingYoSun/indigo/api/atproto"
 	comatproto "github.com/KingYoSun/indigo/api/atproto"
 	"github.com/KingYoSun/indigo/api/bsky"
@@ -23,9 +25,14 @@ import (
 	"github.com/KingYoSun/indigo/repo"
 	"github.com/KingYoSun/indigo/util"
 	"github.com/KingYoSun/indigo/version"
+	"github.com/KingYoSun/indigo/xrpc"
+	lru "github.com/hashicorp/golang-lru"
 
 	"github.com/gorilla/websocket"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-datastore"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipld/go-car"
 
 	_ "github.com/joho/godotenv/autoload"
 
@@ -63,9 +70,15 @@ func run(args []string) {
 			Value:   "bsky.auth",
 			EnvVars: []string{"ATP_AUTH_FILE"},
 		},
+		&cli.StringFlag{
+			Name:    "plc",
+			Value:   "https://plc.directory",
+			EnvVars: []string{"ATP_PLC_HOST"},
+		},
 	}
 	app.Commands = []*cli.Command{
 		actorGetSuggestionsCmd,
+		bgsAdminCmd,
 		createSessionCmd,
 		debugCmd,
 		deletePostCmd,
@@ -196,14 +209,8 @@ var postCmd = &cli.Command{
 }
 
 var didCmd = &cli.Command{
-	Name: "did",
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "plc",
-			Value:   "https://plc.directory",
-			EnvVars: []string{"ATP_PLC_HOST"},
-		},
-	},
+	Name:  "did",
+	Flags: []cli.Flag{},
 	Subcommands: []*cli.Command{
 		didGetCmd,
 		didCreateCmd,
@@ -214,10 +221,34 @@ var didCmd = &cli.Command{
 var didGetCmd = &cli.Command{
 	Name:      "get",
 	ArgsUsage: `<did>`,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "handle",
+			Usage: "resolve did to handle and print",
+		},
+	},
 	Action: func(cctx *cli.Context) error {
-		s := cliutil.GetPLCClient(cctx)
+		s := cliutil.GetDidResolver(cctx)
 
-		doc, err := s.GetDocument(context.TODO(), cctx.Args().First())
+		did := cctx.Args().First()
+
+		if cctx.Bool("handle") {
+			xrpcc, err := cliutil.GetXrpcClient(cctx, false)
+			if err != nil {
+				return err
+			}
+
+			phr := &api.ProdHandleResolver{}
+			h, _, err := api.ResolveDidToHandle(context.TODO(), xrpcc, s, phr, did)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(h)
+			return nil
+		}
+
+		doc, err := s.GetDocument(context.TODO(), did)
 		if err != nil {
 			return err
 		}
@@ -849,23 +880,19 @@ var resolveHandleCmd = &cli.Command{
 	Action: func(cctx *cli.Context) error {
 		ctx := context.TODO()
 
-		xrpcc, err := cliutil.GetXrpcClient(cctx, false)
-		if err != nil {
-			return err
-		}
-
 		args, err := needArgs(cctx, "handle")
 		if err != nil {
 			return err
 		}
 		handle := args[0]
 
-		out, err := comatproto.IdentityResolveHandle(ctx, xrpcc, handle)
+		phr := &api.ProdHandleResolver{}
+		out, err := phr.ResolveHandleToDid(ctx, handle)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println(out.Did)
+		fmt.Println(out)
 
 		return nil
 	},
@@ -899,11 +926,22 @@ var updateHandleCmd = &cli.Command{
 	},
 }
 
+type cachedHandle struct {
+	Handle string
+	Valid  time.Time
+}
+
 var readRepoStreamCmd = &cli.Command{
 	Name: "readStream",
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name: "json",
+		},
+		&cli.BoolFlag{
+			Name: "unpack",
+		},
+		&cli.BoolFlag{
+			Name: "resolve-handles",
 		},
 	},
 	ArgsUsage: `[<repo> [cursor]]`,
@@ -919,7 +957,7 @@ var readRepoStreamCmd = &cli.Command{
 			arg = fmt.Sprintf("%s?cursor=%s", arg, cctx.Args().Get(1))
 		}
 
-		fmt.Println("dialing: ", arg)
+		fmt.Fprintln(os.Stderr, "dialing: ", arg)
 		d := websocket.DefaultDialer
 		con, _, err := d.Dial(arg, http.Header{})
 		if err != nil {
@@ -927,10 +965,11 @@ var readRepoStreamCmd = &cli.Command{
 		}
 
 		jsonfmt := cctx.Bool("json")
+		unpack := cctx.Bool("unpack")
 
-		fmt.Println("Stream Started", time.Now().Format(time.RFC3339))
+		fmt.Fprintln(os.Stderr, "Stream Started", time.Now().Format(time.RFC3339))
 		defer func() {
-			fmt.Println("Stream Exited", time.Now().Format(time.RFC3339))
+			fmt.Fprintln(os.Stderr, "Stream Exited", time.Now().Format(time.RFC3339))
 		}()
 
 		go func() {
@@ -938,7 +977,34 @@ var readRepoStreamCmd = &cli.Command{
 			_ = con.Close()
 		}()
 
-		return events.HandleRepoStream(ctx, con, &events.RepoStreamCallbacks{
+		didr := cliutil.GetDidResolver(cctx)
+		hr := &api.ProdHandleResolver{}
+		resolveHandles := cctx.Bool("resolve-handles")
+
+		cache, _ := lru.New(10000)
+		resolveDid := func(ctx context.Context, did string) (string, error) {
+			val, ok := cache.Get(did)
+			if ok {
+				ch := val.(*cachedHandle)
+				if time.Now().Before(ch.Valid) {
+					return ch.Handle, nil
+				}
+			}
+
+			h, _, err := api.ResolveDidToHandle(ctx, &xrpc.Client{Host: "*"}, didr, hr, did)
+			if err != nil {
+				return "", err
+			}
+
+			cache.Add(did, &cachedHandle{
+				Handle: h,
+				Valid:  time.Now().Add(time.Minute * 10),
+			})
+
+			return h, nil
+		}
+
+		rsc := &events.RepoStreamCallbacks{
 			RepoCommit: func(evt *comatproto.SyncSubscribeRepos_Commit) error {
 				if jsonfmt {
 					b, err := json.Marshal(evt)
@@ -951,21 +1017,66 @@ var readRepoStreamCmd = &cli.Command{
 					}
 					out["blocks"] = fmt.Sprintf("[%d bytes]", len(evt.Blocks))
 
+					if unpack {
+						recs, err := unpackRecords(evt.Blocks, evt.Ops)
+						if err != nil {
+							fmt.Fprintln(os.Stderr, "failed to unpack records: ", err)
+						}
+						out["records"] = recs
+					}
+
 					b, err = json.Marshal(out)
 					if err != nil {
 						return err
 					}
 					fmt.Println(string(b))
-
 				} else {
 					pstr := "<nil>"
 					if evt.Prev != nil && evt.Prev.Defined() {
 						pstr = evt.Prev.String()
 					}
-					fmt.Printf("(%d) RepoAppend: %s (%s -> %s)\n", evt.Seq, evt.Repo, pstr, evt.Commit.String())
+					var handle string
+					if resolveHandles {
+						h, err := resolveDid(ctx, evt.Repo)
+						if err != nil {
+							fmt.Println("failed to resolve handle: ", err)
+						} else {
+							handle = h
+						}
+					}
+					fmt.Printf("(%d) RepoAppend: %s %s (%s -> %s)\n", evt.Seq, evt.Repo, handle, pstr, evt.Commit.String())
+
+					if unpack {
+						recs, err := unpackRecords(evt.Blocks, evt.Ops)
+						if err != nil {
+							fmt.Fprintln(os.Stderr, "failed to unpack records: ", err)
+						}
+
+						for _, rec := range recs {
+							switch rec := rec.(type) {
+							case *bsky.FeedPost:
+								fmt.Printf("\tPost: %q\n", strings.Replace(rec.Text, "\n", " ", -1))
+							}
+						}
+
+					}
 				}
 
 				return nil
+			},
+			RepoHandle: func(handle *comatproto.SyncSubscribeRepos_Handle) error {
+				if jsonfmt {
+					b, err := json.Marshal(handle)
+					if err != nil {
+						return err
+					}
+					fmt.Println(string(b))
+				} else {
+					fmt.Printf("(%d) RepoHandle: %s (changed to: %s)\n", handle.Seq, handle.Did, handle.Handle)
+				}
+
+				return nil
+
 			},
 			RepoInfo: func(info *comatproto.SyncSubscribeRepos_Info) error {
 				if jsonfmt {
@@ -984,8 +1095,51 @@ var readRepoStreamCmd = &cli.Command{
 			Error: func(errf *events.ErrorFrame) error {
 				return fmt.Errorf("error frame: %s: %s", errf.Error, errf.Message)
 			},
-		})
+		}
+		return events.HandleRepoStream(ctx, con, &events.SequentialScheduler{rsc.EventHandler})
 	},
+}
+
+func unpackRecords(blks []byte, ops []*atproto.SyncSubscribeRepos_RepoOp) ([]any, error) {
+	ctx := context.TODO()
+
+	bstore := blockstore.NewBlockstore(datastore.NewMapDatastore())
+	carr, err := car.NewCarReader(bytes.NewReader(blks))
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		blk, err := carr.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		if err := bstore.Put(ctx, blk); err != nil {
+			return nil, err
+		}
+	}
+
+	r, err := repo.OpenRepo(ctx, bstore, carr.Header.Roots[0], false)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []any
+	for _, op := range ops {
+		if op.Action == "create" {
+			_, rec, err := r.GetRecord(ctx, op.Path)
+			if err != nil {
+				return nil, err
+			}
+
+			out = append(out, rec)
+		}
+	}
+
+	return out, nil
 }
 
 var getRecordCmd = &cli.Command{
@@ -1110,6 +1264,7 @@ var createInviteCmd = &cli.Command{
 		count := cctx.Int("useCount")
 		num := cctx.Int("num")
 
+		phr := &api.ProdHandleResolver{}
 		if bulkfi := cctx.String("bulk"); bulkfi != "" {
 			xrpcc.AdminToken = &adminKey
 			dids, err := readDids(bulkfi)
@@ -1119,12 +1274,12 @@ var createInviteCmd = &cli.Command{
 
 			for i, d := range dids {
 				if !strings.HasPrefix(d, "did:plc:") {
-					out, err := comatproto.IdentityResolveHandle(context.TODO(), xrpcc, d)
+					out, err := phr.ResolveHandleToDid(context.TODO(), d)
 					if err != nil {
 						return fmt.Errorf("failed to resolve %q: %w", d, err)
 					}
 
-					dids[i] = out.Did
+					dids[i] = out
 				}
 			}
 
@@ -1142,12 +1297,16 @@ var createInviteCmd = &cli.Command{
 
 		var usrdid []string
 		if forUser := cctx.Args().Get(0); forUser != "" {
-			resp, err := comatproto.IdentityResolveHandle(context.TODO(), xrpcc, forUser)
-			if err != nil {
-				return fmt.Errorf("resolving handle: %w", err)
-			}
+			if !strings.HasPrefix(forUser, "did:") {
+				resp, err := phr.ResolveHandleToDid(context.TODO(), forUser)
+				if err != nil {
+					return fmt.Errorf("resolving handle: %w", err)
+				}
 
-			usrdid = []string{resp.Did}
+				usrdid = []string{resp}
+			} else {
+				usrdid = []string{forUser}
+			}
 		}
 
 		xrpcc.AdminToken = &adminKey
@@ -1244,6 +1403,12 @@ var createFeedGeneratorCmd = &cli.Command{
 			Name:     "did",
 			Required: true,
 		},
+		&cli.StringFlag{
+			Name: "description",
+		},
+		&cli.StringFlag{
+			Name: "display-name",
+		},
 	},
 	Action: func(cctx *cli.Context) error {
 		xrpcc, err := cliutil.GetXrpcClient(cctx, true)
@@ -1251,7 +1416,12 @@ var createFeedGeneratorCmd = &cli.Command{
 			return err
 		}
 
-		name := cctx.String("name")
+		rkey := cctx.String("name")
+		name := rkey
+		if dn := cctx.String("display-name"); dn != "" {
+			name = dn
+		}
+
 		did := cctx.String("did")
 
 		var desc *string
@@ -1259,21 +1429,42 @@ var createFeedGeneratorCmd = &cli.Command{
 			desc = &d
 		}
 
-		resp, err := atproto.RepoCreateRecord(context.TODO(), xrpcc, &atproto.RepoCreateRecord_Input{
-			Collection: "app.bsky.feed.generator",
-			Repo:       xrpcc.Auth.Did,
-			Record: &lexutil.LexiconTypeDecoder{&bsky.FeedGenerator{
-				CreatedAt:   time.Now().Format(util.ISO8601),
-				Description: desc,
-				Did:         did,
-				DisplayName: name,
-			}},
-		})
-		if err != nil {
-			return err
-		}
+		ctx := context.TODO()
 
-		fmt.Println(resp.Uri)
+		rec := &lexutil.LexiconTypeDecoder{&bsky.FeedGenerator{
+			CreatedAt:   time.Now().Format(util.ISO8601),
+			Description: desc,
+			Did:         did,
+			DisplayName: name,
+		}}
+
+		ex, err := atproto.RepoGetRecord(ctx, xrpcc, "", "app.bsky.feed.generator", xrpcc.Auth.Did, rkey)
+		if err == nil {
+			resp, err := atproto.RepoPutRecord(ctx, xrpcc, &atproto.RepoPutRecord_Input{
+				SwapRecord: ex.Cid,
+				Collection: "app.bsky.feed.generator",
+				Repo:       xrpcc.Auth.Did,
+				Rkey:       rkey,
+				Record:     rec,
+			})
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(resp.Uri)
+		} else {
+			resp, err := atproto.RepoCreateRecord(ctx, xrpcc, &atproto.RepoCreateRecord_Input{
+				Collection: "app.bsky.feed.generator",
+				Repo:       xrpcc.Auth.Did,
+				Rkey:       &rkey,
+				Record:     rec,
+			})
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(resp.Uri)
+		}
 
 		return nil
 	},

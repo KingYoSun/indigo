@@ -8,6 +8,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	mathrand "math/rand"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"github.com/KingYoSun/indigo/events"
 	"github.com/KingYoSun/indigo/indexer"
 	lexutil "github.com/KingYoSun/indigo/lex/util"
+	"github.com/KingYoSun/indigo/models"
 	"github.com/KingYoSun/indigo/notifs"
 	"github.com/KingYoSun/indigo/pds"
 	"github.com/KingYoSun/indigo/plc"
@@ -36,22 +38,36 @@ import (
 	"github.com/multiformats/go-multihash"
 	"github.com/whyrusleeping/go-did"
 
+	"net/url"
+
 	"github.com/gorilla/websocket"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-type testPDS struct {
+type TestPDS struct {
 	dir    string
 	server *pds.Server
 	plc    *api.PLCServer
 
-	host string
+	listener net.Listener
 
 	shutdown func()
 }
 
-func (tp *testPDS) Cleanup() {
+// HTTPHost returns a host:port string that the PDS server is running at
+func (tp *TestPDS) RawHost() string {
+	return tp.listener.Addr().String()
+}
+
+// HTTPHost returns a URL string that the PDS server is running at with the
+// scheme set for HTTP
+func (tp *TestPDS) HTTPHost() string {
+	u := url.URL{Scheme: "http", Host: tp.listener.Addr().String()}
+	return u.String()
+}
+
+func (tp *TestPDS) Cleanup() {
 	if tp.shutdown != nil {
 		tp.shutdown()
 	}
@@ -61,10 +77,11 @@ func (tp *testPDS) Cleanup() {
 	}
 }
 
-func mustSetupPDS(t *testing.T, host, suffix string, plc plc.PLCClient) *testPDS {
+func MustSetupPDS(t *testing.T, suffix string, plc plc.PLCClient) *TestPDS {
 	t.Helper()
-
-	tpds, err := SetupPDS(host, suffix, plc)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tpds, err := SetupPDS(ctx, suffix, plc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,15 +89,20 @@ func mustSetupPDS(t *testing.T, host, suffix string, plc plc.PLCClient) *testPDS
 	return tpds
 }
 
-func SetupPDS(host, suffix string, plc plc.PLCClient) (*testPDS, error) {
+func SetupPDS(ctx context.Context, suffix string, plc plc.PLCClient) (*TestPDS, error) {
 	dir, err := os.MkdirTemp("", "integtest")
 	if err != nil {
 		return nil, err
 	}
 
-	maindb, err := gorm.Open(sqlite.Open(filepath.Join(dir, "test.sqlite")))
+	maindb, err := gorm.Open(sqlite.Open(filepath.Join(dir, "test.sqlite?cache=shared&mode=rwc")))
 	if err != nil {
 		return nil, err
+	}
+
+	tx := maindb.Exec("PRAGMA journal_mode=WAL;")
+	if tx.Error != nil {
+		return nil, tx.Error
 	}
 
 	cardb, err := gorm.Open(sqlite.Open(filepath.Join(dir, "car.sqlite")))
@@ -112,22 +134,29 @@ func SetupPDS(host, suffix string, plc plc.PLCClient) (*testPDS, error) {
 		APIKey: "meili-master-key",
 	})
 
+	var lc net.ListenConfig
+	li, err := lc.Listen(ctx, "tcp", "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
+	host := li.Addr().String()
 	srv, err := pds.NewServer(maindb, meilicli, cs, serkey, suffix, host, plc, []byte(host+suffix))
 	if err != nil {
 		return nil, err
 	}
 
-	return &testPDS{
-		dir:    dir,
-		server: srv,
-		host:   host,
+	return &TestPDS{
+		dir:      dir,
+		server:   srv,
+		listener: li,
 	}, nil
 }
 
-func (tp *testPDS) Run(t *testing.T) {
+func (tp *TestPDS) Run(t *testing.T) {
 	// TODO: rig this up so it t.Fatals if the RunAPI call fails immediately
 	go func() {
-		if err := tp.server.RunAPI(tp.host); err != nil {
+		if err := tp.server.RunAPIWithListener(tp.listener); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -138,24 +167,24 @@ func (tp *testPDS) Run(t *testing.T) {
 	}
 }
 
-func (tp *testPDS) RequestScraping(t *testing.T, b *testBGS) {
+func (tp *TestPDS) RequestScraping(t *testing.T, b *TestBGS) {
 	t.Helper()
 
-	c := &xrpc.Client{Host: "http://" + b.host}
-	if err := atproto.SyncRequestCrawl(context.TODO(), c, tp.host); err != nil {
+	c := &xrpc.Client{Host: "http://" + b.Host()}
+	if err := atproto.SyncRequestCrawl(context.TODO(), c, tp.RawHost()); err != nil {
 		t.Fatal(err)
 	}
 }
 
-type testUser struct {
+type TestUser struct {
 	handle string
-	pds    *testPDS
+	pds    *TestPDS
 	did    string
 
 	client *xrpc.Client
 }
 
-func (tp *testPDS) MustNewUser(t *testing.T, handle string) *testUser {
+func (tp *TestPDS) MustNewUser(t *testing.T, handle string) *TestUser {
 	t.Helper()
 
 	u, err := tp.NewUser(handle)
@@ -166,11 +195,11 @@ func (tp *testPDS) MustNewUser(t *testing.T, handle string) *testUser {
 	return u
 }
 
-func (tp *testPDS) NewUser(handle string) (*testUser, error) {
+func (tp *TestPDS) NewUser(handle string) (*TestUser, error) {
 	ctx := context.TODO()
 
 	c := &xrpc.Client{
-		Host: "http://" + tp.host,
+		Host: tp.HTTPHost(),
 	}
 
 	fmt.Println("HOST: ", c.Host)
@@ -190,7 +219,7 @@ func (tp *testPDS) NewUser(handle string) (*testUser, error) {
 		Did:        out.Did,
 	}
 
-	return &testUser{
+	return &TestUser{
 		pds:    tp,
 		handle: out.Handle,
 		client: c,
@@ -198,7 +227,7 @@ func (tp *testPDS) NewUser(handle string) (*testUser, error) {
 	}, nil
 }
 
-func (u *testUser) Reply(t *testing.T, replyto, root *atproto.RepoStrongRef, body string) string {
+func (u *TestUser) Reply(t *testing.T, replyto, root *atproto.RepoStrongRef, body string) string {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -221,11 +250,11 @@ func (u *testUser) Reply(t *testing.T, replyto, root *atproto.RepoStrongRef, bod
 	return resp.Uri
 }
 
-func (u *testUser) DID() string {
+func (u *TestUser) DID() string {
 	return u.did
 }
 
-func (u *testUser) Post(t *testing.T, body string) *atproto.RepoStrongRef {
+func (u *TestUser) Post(t *testing.T, body string) *atproto.RepoStrongRef {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -248,7 +277,7 @@ func (u *testUser) Post(t *testing.T, body string) *atproto.RepoStrongRef {
 	}
 }
 
-func (u *testUser) Like(t *testing.T, post *atproto.RepoStrongRef) {
+func (u *TestUser) Like(t *testing.T, post *atproto.RepoStrongRef) {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -267,7 +296,7 @@ func (u *testUser) Like(t *testing.T, post *atproto.RepoStrongRef) {
 
 }
 
-func (u *testUser) Follow(t *testing.T, did string) string {
+func (u *TestUser) Follow(t *testing.T, did string) string {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -287,7 +316,7 @@ func (u *testUser) Follow(t *testing.T, did string) string {
 	return resp.Uri
 }
 
-func (u *testUser) GetFeed(t *testing.T) []*bsky.FeedDefs_FeedViewPost {
+func (u *TestUser) GetFeed(t *testing.T) []*bsky.FeedDefs_FeedViewPost {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -299,7 +328,7 @@ func (u *testUser) GetFeed(t *testing.T) []*bsky.FeedDefs_FeedViewPost {
 	return resp.Feed
 }
 
-func (u *testUser) GetNotifs(t *testing.T) []*bsky.NotificationListNotifications_Notification {
+func (u *TestUser) GetNotifs(t *testing.T) []*bsky.NotificationListNotifications_Notification {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -311,7 +340,7 @@ func (u *testUser) GetNotifs(t *testing.T) []*bsky.NotificationListNotifications
 	return resp.Notifications
 }
 
-func (u *testUser) ChangeHandle(t *testing.T, nhandle string) {
+func (u *TestUser) ChangeHandle(t *testing.T, nhandle string) {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -322,7 +351,7 @@ func (u *testUser) ChangeHandle(t *testing.T, nhandle string) {
 	}
 }
 
-func (u *testUser) DoRebase(t *testing.T) {
+func (u *TestUser) DoRebase(t *testing.T) {
 	t.Helper()
 
 	ctx := context.TODO()
@@ -334,7 +363,7 @@ func (u *testUser) DoRebase(t *testing.T) {
 	}
 }
 
-func testPLC(t *testing.T) *plc.FakeDid {
+func TestPLC(t *testing.T) *plc.FakeDid {
 	// TODO: just do in memory...
 	tdir, err := os.MkdirTemp("", "plcserv")
 	if err != nil {
@@ -348,13 +377,24 @@ func testPLC(t *testing.T) *plc.FakeDid {
 	return plc.NewFakeDid(db)
 }
 
-type testBGS struct {
-	bgs  *bgs.BGS
-	host string
+type TestBGS struct {
+	bgs *bgs.BGS
+	tr  *api.TestHandleResolver
+	db  *gorm.DB
+
+	// listener is owned by by the BGS structure and should be closed by
+	// shutting down the BGS.
+	listener net.Listener
 }
 
-func mustSetupBGS(t *testing.T, host string, didr plc.PLCClient) *testBGS {
-	tbgs, err := SetupBGS(host, didr)
+func (t *TestBGS) Host() string {
+	return t.listener.Addr().String()
+}
+
+func MustSetupBGS(t *testing.T, didr plc.PLCClient) *TestBGS {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tbgs, err := SetupBGS(ctx, didr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +402,7 @@ func mustSetupBGS(t *testing.T, host string, didr plc.PLCClient) *testBGS {
 	return tbgs
 }
 
-func SetupBGS(host string, didr plc.PLCClient) (*testBGS, error) {
+func SetupBGS(ctx context.Context, didr plc.PLCClient) (*TestBGS, error) {
 	dir, err := os.MkdirTemp("", "integtest")
 	if err != nil {
 		return nil, err
@@ -395,14 +435,12 @@ func SetupBGS(host string, didr plc.PLCClient) (*testBGS, error) {
 
 	notifman := notifs.NewNotificationManager(maindb, repoman.GetRecord)
 
-	dbpersist, err := events.NewDbPersistence(maindb, cs)
+	dbpersist, err := events.NewDbPersistence(maindb, cs, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	evtman := events.NewEventManager(dbpersist)
-
-	go evtman.Run()
 
 	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
 		Host: "http://localhost:7700",
@@ -420,35 +458,55 @@ func SetupBGS(host string, didr plc.PLCClient) (*testBGS, error) {
 		}
 	})
 
-	b, err := bgs.NewBGS(maindb, ix, meilicli, repoman, evtman, didr, nil, false)
+	tr := &api.TestHandleResolver{}
+
+	b, err := bgs.NewBGS(maindb, ix, meilicli, repoman, evtman, didr, nil, tr, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return &testBGS{
-		bgs:  b,
-		host: host,
+	var lc net.ListenConfig
+	listener, err := lc.Listen(ctx, "tcp", "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+
+	return &TestBGS{
+		db:       maindb,
+		bgs:      b,
+		tr:       tr,
+		listener: listener,
 	}, nil
 }
 
-func (b *testBGS) Run(t *testing.T) {
+func (b *TestBGS) Run(t *testing.T) {
 	go func() {
-		if err := b.bgs.Start(b.host); err != nil {
+		if err := b.bgs.StartWithListener(b.listener); err != nil {
 			fmt.Println(err)
 		}
 	}()
 	time.Sleep(time.Millisecond * 10)
 }
 
-type eventStream struct {
-	lk     sync.Mutex
-	events []*events.XRPCStreamEvent
-	cancel func()
+func (b *TestBGS) BanDomain(t *testing.T, d string) {
+	t.Helper()
 
-	cur int
+	if err := b.db.Create(&models.DomainBan{
+		Domain: d,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 }
 
-func (b *testBGS) Events(t *testing.T, since int64) *eventStream {
+type EventStream struct {
+	Lk     sync.Mutex
+	Events []*events.XRPCStreamEvent
+	Cancel func()
+
+	Cur int
+}
+
+func (b *TestBGS) Events(t *testing.T, since int64) *EventStream {
 	d := websocket.Dialer{}
 	h := http.Header{}
 
@@ -457,7 +515,7 @@ func (b *testBGS) Events(t *testing.T, since int64) *eventStream {
 		q = fmt.Sprintf("?cursor=%d", since)
 	}
 
-	con, resp, err := d.Dial("ws://"+b.host+"/xrpc/com.atproto.sync.subscribeRepos"+q, h)
+	con, resp, err := d.Dial("ws://"+b.Host()+"/xrpc/com.atproto.sync.subscribeRepos"+q, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,8 +526,8 @@ func (b *testBGS) Events(t *testing.T, since int64) *eventStream {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	es := &eventStream{
-		cancel: cancel,
+	es := &EventStream{
+		Cancel: cancel,
 	}
 
 	go func() {
@@ -478,22 +536,23 @@ func (b *testBGS) Events(t *testing.T, since int64) *eventStream {
 	}()
 
 	go func() {
-		if err := events.HandleRepoStream(ctx, con, &events.RepoStreamCallbacks{
+		rsc := &events.RepoStreamCallbacks{
 			RepoCommit: func(evt *atproto.SyncSubscribeRepos_Commit) error {
 				fmt.Println("received event: ", evt.Seq, evt.Repo)
-				es.lk.Lock()
-				es.events = append(es.events, &events.XRPCStreamEvent{RepoCommit: evt})
-				es.lk.Unlock()
+				es.Lk.Lock()
+				es.Events = append(es.Events, &events.XRPCStreamEvent{RepoCommit: evt})
+				es.Lk.Unlock()
 				return nil
 			},
 			RepoHandle: func(evt *atproto.SyncSubscribeRepos_Handle) error {
 				fmt.Println("received handle event: ", evt.Seq, evt.Did)
-				es.lk.Lock()
-				es.events = append(es.events, &events.XRPCStreamEvent{RepoHandle: evt})
-				es.lk.Unlock()
+				es.Lk.Lock()
+				es.Events = append(es.Events, &events.XRPCStreamEvent{RepoHandle: evt})
+				es.Lk.Unlock()
 				return nil
 			},
-		}); err != nil {
+		}
+		if err := events.HandleRepoStream(ctx, con, &events.SequentialScheduler{rsc.EventHandler}); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -501,31 +560,31 @@ func (b *testBGS) Events(t *testing.T, since int64) *eventStream {
 	return es
 }
 
-func (es *eventStream) Next() *events.XRPCStreamEvent {
-	defer es.lk.Unlock()
+func (es *EventStream) Next() *events.XRPCStreamEvent {
+	defer es.Lk.Unlock()
 	for {
-		es.lk.Lock()
-		if len(es.events) > es.cur {
-			es.cur++
-			return es.events[es.cur-1]
+		es.Lk.Lock()
+		if len(es.Events) > es.Cur {
+			es.Cur++
+			return es.Events[es.Cur-1]
 		}
-		es.lk.Unlock()
+		es.Lk.Unlock()
 		time.Sleep(time.Millisecond * 10)
 	}
 }
 
-func (es *eventStream) All() []*events.XRPCStreamEvent {
-	es.lk.Lock()
-	defer es.lk.Unlock()
-	out := make([]*events.XRPCStreamEvent, len(es.events))
-	for i, e := range es.events {
+func (es *EventStream) All() []*events.XRPCStreamEvent {
+	es.Lk.Lock()
+	defer es.Lk.Unlock()
+	out := make([]*events.XRPCStreamEvent, len(es.Events))
+	for i, e := range es.Events {
 		out[i] = e
 	}
 
 	return out
 }
 
-func (es *eventStream) WaitFor(n int) []*events.XRPCStreamEvent {
+func (es *EventStream) WaitFor(n int) []*events.XRPCStreamEvent {
 	var out []*events.XRPCStreamEvent
 	for i := 0; i < n; i++ {
 		out = append(out, es.Next())
@@ -600,7 +659,7 @@ var words = []string{
 	"parrot",
 }
 
-func makeRandomPost() string {
+func MakeRandomPost() string {
 	var out []string
 	for i := 0; i < 20; i++ {
 		out = append(out, words[mathrand.Intn(len(words))])
@@ -685,7 +744,7 @@ func RandFakeAtUri(collection, rkey string) string {
 	return fmt.Sprintf("at://did:plc:%s/%s/%s", did, collection, rkey)
 }
 
-func randAction() string {
+func RandAction() string {
 	v := mathrand.Intn(100)
 	if v < 40 {
 		return "post"
@@ -708,7 +767,7 @@ func GenerateFakeRepo(r *repo.Repo, size int) (cid.Cid, error) {
 
 	var root cid.Cid
 	for i := 0; i < size; i++ {
-		switch randAction() {
+		switch RandAction() {
 		case "post":
 			_, _, err := r.CreateRecord(ctx, "app.bsky.feed.post", &bsky.FeedPost{
 				CreatedAt: time.Now().Format(bsutil.ISO8601),

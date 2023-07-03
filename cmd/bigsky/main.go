@@ -18,6 +18,7 @@ import (
 	"github.com/KingYoSun/indigo/plc"
 	"github.com/KingYoSun/indigo/repomgr"
 	"github.com/KingYoSun/indigo/version"
+	"github.com/KingYoSun/indigo/xrpc"
 
 	_ "net/http/pprof"
 
@@ -29,6 +30,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -103,7 +105,7 @@ func run(args []string) {
 		},
 		&cli.BoolFlag{
 			Name:  "aggregation",
-			Value: true,
+			Value: false,
 		},
 		&cli.StringFlag{
 			Name:  "api-listen",
@@ -143,6 +145,40 @@ func run(args []string) {
 				)),
 			)
 
+			otel.SetTracerProvider(tp)
+		}
+
+		// Enable OTLP HTTP exporter
+		// For relevant environment variables:
+		// https://pkg.go.dev/go.opentelemetry.io/otel/exporters/otlp/otlptrace#readme-environment-variables
+		// At a minimum, you need to set
+		// OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+		if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			exp, err := otlptracehttp.New(ctx)
+			if err != nil {
+				log.Fatalw("failed to create trace exporter", "error", err)
+			}
+			defer func() {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				if err := exp.Shutdown(ctx); err != nil {
+					log.Errorw("failed to shutdown trace exporter", "error", err)
+				}
+			}()
+
+			tp := tracesdk.NewTracerProvider(
+				tracesdk.WithBatcher(exp),
+				tracesdk.WithResource(resource.NewWithAttributes(
+					semconv.SchemaURL,
+					semconv.ServiceNameKey.String("bgs"),
+					attribute.String("env", os.Getenv("ENVIRONMENT")),         // DataDog
+					attribute.String("environment", os.Getenv("ENVIRONMENT")), // Others
+					attribute.Int64("ID", 1),
+				)),
+			)
 			otel.SetTracerProvider(tp)
 		}
 
@@ -192,20 +228,27 @@ func run(args []string) {
 
 		repoman := repomgr.NewRepoManager(db, cstore, kmgr)
 
-		dbp, err := events.NewDbPersistence(db, cstore)
+		dbp, err := events.NewDbPersistence(db, cstore, nil)
 		if err != nil {
 			return fmt.Errorf("setting up db event persistence: %w", err)
 		}
 
 		evtman := events.NewEventManager(dbp)
 
-		go evtman.Run()
-
 		notifman := &notifs.NullNotifs{}
 
 		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
 		if err != nil {
 			return err
+		}
+
+		rlskip := os.Getenv("BSKY_SOCIAL_RATE_LIMIT_SKIP")
+		ix.ApplyPDSClientSettings = func(c *xrpc.Client) {
+			if c.Host == "https://bsky.social" && rlskip != "" {
+				c.Headers = map[string]string{
+					"x-ratelimit-bypass": rlskip,
+				}
+			}
 		}
 
 		repoman.SetEventHandler(func(ctx context.Context, evt *repomgr.RepoEvent) {
@@ -219,7 +262,12 @@ func run(args []string) {
 			blobstore = &blobs.DiskBlobStore{bsdir}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, !cctx.Bool("crawl-insecure-ws"))
+		var hr api.HandleResolver = &api.ProdHandleResolver{}
+		if cctx.Bool("crawl-insecure-ws") {
+			hr = &api.TestHandleResolver{}
+		}
+
+		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, didr, blobstore, hr, !cctx.Bool("crawl-insecure-ws"))
 		if err != nil {
 			return err
 		}

@@ -7,11 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 
+	atproto "github.com/KingYoSun/indigo/api/atproto"
 	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
 	appbsky "github.com/KingYoSun/indigo/api/bsky"
 	"github.com/KingYoSun/indigo/repo"
+	"github.com/KingYoSun/indigo/util"
+	"github.com/KingYoSun/indigo/xrpc"
 	"github.com/ipfs/go-cid"
+	"github.com/labstack/echo/v4"
 )
 
 func (s *BGS) handleComAtprotoSyncGetCheckout(ctx context.Context, commit string, did string) (io.Reader, error) {
@@ -34,11 +40,11 @@ func (s *BGS) handleComAtprotoSyncGetCheckout(ctx context.Context, commit string
 
 		return buf, nil
 	*/
-	panic("nyi")
+	return nil, fmt.Errorf("nyi")
 }
 
 func (s *BGS) handleComAtprotoSyncGetCommitPath(ctx context.Context, did string, earliest string, latest string) (*comatprototypes.SyncGetCommitPath_Output, error) {
-	panic("nyi")
+	return nil, fmt.Errorf("nyi")
 }
 
 func (s *BGS) handleComAtprotoSyncGetHead(ctx context.Context, did string) (*comatprototypes.SyncGetHead_Output, error) {
@@ -58,7 +64,7 @@ func (s *BGS) handleComAtprotoSyncGetHead(ctx context.Context, did string) (*com
 }
 
 func (s *BGS) handleComAtprotoSyncGetRecord(ctx context.Context, collection string, commit string, did string, rkey string) (io.Reader, error) {
-	panic("nyi")
+	return nil, fmt.Errorf("nyi")
 }
 
 func (s *BGS) handleComAtprotoSyncGetRepo(ctx context.Context, did string, earliest string, latest string) (io.Reader, error) {
@@ -96,7 +102,7 @@ func (s *BGS) handleComAtprotoSyncGetRepo(ctx context.Context, did string, earli
 }
 
 func (s *BGS) handleComAtprotoSyncGetBlocks(ctx context.Context, cids []string, did string) (io.Reader, error) {
-	panic("NYI")
+	return nil, fmt.Errorf("NYI")
 }
 
 func (s *BGS) handleComAtprotoSyncRequestCrawl(ctx context.Context, host string) error {
@@ -104,13 +110,54 @@ func (s *BGS) handleComAtprotoSyncRequestCrawl(ctx context.Context, host string)
 		return fmt.Errorf("must pass valid hostname")
 	}
 
-	log.Warnf("TODO: host validation for crawl requests")
-	return s.slurper.SubscribeToPds(ctx, host, true)
+	if strings.HasPrefix(host, "https://") || strings.HasPrefix(host, "http://") {
+		return &echo.HTTPError{
+			Code:    400,
+			Message: "must pass domain without protocol scheme",
+		}
+	}
+
+	norm, err := util.NormalizeHostname(host)
+	if err != nil {
+		return err
+	}
+
+	banned, err := s.domainIsBanned(ctx, host)
+	if banned {
+		return &echo.HTTPError{
+			Code:    401,
+			Message: "domain is banned",
+		}
+	}
+
+	log.Warnf("TODO: better host validation for crawl requests")
+
+	c := &xrpc.Client{
+		Host:   "https://" + host,
+		Client: http.DefaultClient, // not using the client that auto-retries
+	}
+
+	if !s.ssl {
+		c.Host = "http://" + host
+	}
+
+	desc, err := atproto.ServerDescribeServer(ctx, c)
+	if err != nil {
+		return &echo.HTTPError{
+			Code:    401,
+			Message: fmt.Sprintf("given host failed to respond to ping: %s", err),
+		}
+	}
+
+	// Maybe we could do something with this response later
+	_ = desc
+
+	return s.slurper.SubscribeToPds(ctx, norm, true)
 }
 
 func (s *BGS) handleComAtprotoSyncNotifyOfUpdate(ctx context.Context, hostname string) error {
-	panic("NYI")
-	//return s.slurper.SubscribeToPds(ctx, host, false)
+	// TODO:
+	return nil
 }
 
 func (s *BGS) handleComAtprotoSyncGetBlob(ctx context.Context, cid string, did string) (io.Reader, error) {
@@ -127,7 +174,7 @@ func (s *BGS) handleComAtprotoSyncGetBlob(ctx context.Context, cid string, did s
 }
 
 func (s *BGS) handleComAtprotoSyncListBlobs(ctx context.Context, did string, earliest string, latest string) (*comatprototypes.SyncListBlobs_Output, error) {
-	panic("NYI")
+	return nil, fmt.Errorf("NYI")
 }
 
 func (s *BGS) handleDebugGetRepoJson(ctx context.Context, did string, bcid string, rkey string) ([]byte, error) {
@@ -177,7 +224,7 @@ func (s *BGS) handleDebugGetRepoJson(ctx context.Context, did string, bcid strin
 }
 
 func (s *BGS) handleComAtprotoSyncListRepos(ctx context.Context, cursor string, limit int) (*comatprototypes.SyncListRepos_Output, error) {
-	panic("NYI")
+	return nil, fmt.Errorf("NYI")
 }
 
 func (s *BGS) handleMeiliRequestCopyRecord(ctx context.Context, host string) error {

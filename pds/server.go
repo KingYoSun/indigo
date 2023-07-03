@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/mail"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/KingYoSun/indigo/api/atproto"
 	comatproto "github.com/KingYoSun/indigo/api/atproto"
 	bsky "github.com/KingYoSun/indigo/api/bsky"
 	"github.com/KingYoSun/indigo/carstore"
@@ -60,6 +63,13 @@ type Server struct {
 const UserActorDeclCid = "bafyreid27zk7lbis4zw5fz4podbvbs4fc5ivwji3dmrwa6zggnj4bnd57u"
 const UserActorDeclType = "app.bsky.system.actorUser"
 
+// serverListenerBootTimeout is how long to wait for the requested server socket
+// to become available for use. This is an arbitrary timeout that should be safe
+// on any platform, but there's no great way to weave this timeout without
+// adding another parameter to the (at time of writing) long signature of
+// NewServer.
+const serverListenerBootTimeout = 5 * time.Second
+
 func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore, serkey *did.PrivKey, handleSuffix, serviceUrl string, didr plc.PLCClient, jwtkey []byte) (*Server, error) {
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Peering{})
@@ -107,8 +117,6 @@ func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore,
 
 	s.feedgen = feedgen
 
-	go evtman.Run()
-
 	return s, nil
 }
 
@@ -136,7 +144,7 @@ func (s *Server) handleFedEvent(ctx context.Context, host *Peering, env *events.
 			u.ID = subj.Uid
 		}
 
-		return s.repoman.HandleExternalUserEvent(ctx, host.ID, u.ID, u.Did, (*cid.Cid)(evt.Prev), evt.Blocks)
+		return s.repoman.HandleExternalUserEvent(ctx, host.ID, u.ID, u.Did, (*cid.Cid)(evt.Prev), evt.Blocks, evt.Ops)
 	default:
 		return fmt.Errorf("invalid fed event")
 	}
@@ -167,15 +175,17 @@ func (s *Server) createExternalUser(ctx context.Context, did string) (*models.Ac
 	c := &xrpc.Client{Host: svc.ServiceEndpoint}
 
 	if peering.ID == 0 {
-		pdsdid, err := comatproto.IdentityResolveHandle(ctx, c, "")
+		cfg, err := atproto.ServerDescribeServer(ctx, c)
 		if err != nil {
 			// TODO: failing this shouldnt halt our indexing
-			return nil, fmt.Errorf("failed to get accounts config for unrecognized pds: %w", err)
+			return nil, fmt.Errorf("failed to check unrecognized pds: %w", err)
 		}
+
+		// since handles can be anything, checking against this list doesnt matter...
+		_ = cfg
 
 		// TODO: could check other things, a valid response is good enough for now
 		peering.Host = svc.ServiceEndpoint
-		peering.Did = pdsdid.Did
 
 		if err := s.db.Create(&peering).Error; err != nil {
 			return nil, err
@@ -268,7 +278,19 @@ func (s *Server) readRecordFunc(ctx context.Context, user bsutil.Uid, c cid.Cid)
 	return lexutil.CborDecodeValue(blk.RawData())
 }
 
-func (s *Server) RunAPI(listen string) error {
+func (s *Server) RunAPI(addr string) error {
+	var lc net.ListenConfig
+	ctx, cancel := context.WithTimeout(context.Background(), serverListenerBootTimeout)
+	defer cancel()
+
+	li, err := lc.Listen(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	return s.RunAPIWithListener(li)
+}
+
+func (s *Server) RunAPIWithListener(listen net.Listener) error {
 	e := echo.New()
 	s.echo = e
 	e.HideBanner = true
@@ -306,6 +328,8 @@ func (s *Server) RunAPI(listen string) error {
 				ctx = context.WithValue(ctx, "auth", auth)
 				c.SetRequest(c.Request().WithContext(ctx))
 				return true
+			case "/.well-known/atproto-did":
+				return true
 			default:
 				return false
 			}
@@ -332,8 +356,14 @@ func (s *Server) RunAPI(listen string) error {
 	s.RegisterHandlersAppBsky(e)
 	e.GET("/xrpc/com.atproto.sync.subscribeRepos", s.EventsHandler)
 	e.GET("/xrpc/_health", s.HandleHealthCheck)
+	e.GET("/.well-known/atproto-did", s.HandleResolveDid)
 
-	return e.Start(listen)
+	// In order to support booting on random ports in tests, we need to tell the
+	// Echo instance it's already got a port, and then use its StartServer
+	// method to re-use that listener.
+	e.Listener = listen
+	srv := &http.Server{}
+	return e.StartServer(srv)
 }
 
 type HealthStatus struct {
@@ -348,6 +378,22 @@ func (s *Server) HandleHealthCheck(c echo.Context) error {
 	} else {
 		return c.JSON(200, HealthStatus{Status: "ok"})
 	}
+}
+
+func (s *Server) HandleResolveDid(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	handle := c.Request().Host
+	if hh := c.Request().Header.Get("Host"); hh != "" {
+		handle = hh
+	}
+
+	u, err := s.lookupUserByHandle(ctx, handle)
+	if err != nil {
+		return fmt.Errorf("resolving %q: %w", handle, err)
+	}
+
+	return c.String(200, u.Did)
 }
 
 type User struct {
