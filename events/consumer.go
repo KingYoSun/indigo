@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	comatproto "github.com/KingYoSun/indigo/api/atproto"
-	label "github.com/KingYoSun/indigo/api/label"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	label "github.com/bluesky-social/indigo/api/label"
 
 	"github.com/gorilla/websocket"
 )

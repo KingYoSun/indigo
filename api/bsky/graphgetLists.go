@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // GraphGetLists_Output is the output of a app.bsky.graph.getLists call.

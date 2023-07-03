@@ -3,7 +3,7 @@ package label
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // schema: com.atproto.label.queryLabels

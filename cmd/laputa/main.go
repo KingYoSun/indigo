@@ -4,12 +4,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/KingYoSun/indigo/api"
-	"github.com/KingYoSun/indigo/carstore"
-	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
-	"github.com/KingYoSun/indigo/pds"
-	"github.com/KingYoSun/indigo/plc"
-	"github.com/KingYoSun/indigo/version"
+	"github.com/bluesky-social/indigo/api"
+	"github.com/bluesky-social/indigo/carstore"
+	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
+	"github.com/bluesky-social/indigo/pds"
+	"github.com/bluesky-social/indigo/plc"
+	"github.com/bluesky-social/indigo/version"
 
 	_ "github.com/joho/godotenv/autoload"
 

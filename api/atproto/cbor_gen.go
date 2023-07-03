@@ -8,7 +8,7 @@ import (
 	"math"
 	"sort"
 
-	util "github.com/KingYoSun/indigo/lex/util"
+	util "github.com/bluesky-social/indigo/lex/util"
 	cid "github.com/ipfs/go-cid"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	xerrors "golang.org/x/xerrors"

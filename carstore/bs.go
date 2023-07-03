@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	util "github.com/KingYoSun/indigo/util"
+	util "github.com/bluesky-social/indigo/util"
 
 	blockformat "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"

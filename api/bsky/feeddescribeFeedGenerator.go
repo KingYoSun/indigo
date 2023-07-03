@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // FeedDescribeFeedGenerator_Feed is a "feed" in the app.bsky.feed.describeFeedGenerator schema.

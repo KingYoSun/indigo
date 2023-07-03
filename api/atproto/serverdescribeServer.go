@@ -7,7 +7,7 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ServerDescribeServer_Links is a "links" in the com.atproto.server.describeServer schema.

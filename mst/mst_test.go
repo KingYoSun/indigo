@@ -11,7 +11,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/KingYoSun/indigo/util"
+	"github.com/bluesky-social/indigo/util"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"

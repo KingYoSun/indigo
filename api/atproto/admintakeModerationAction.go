@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // AdminTakeModerationAction_Input is the input argument to a com.atproto.admin.takeModerationAction call.

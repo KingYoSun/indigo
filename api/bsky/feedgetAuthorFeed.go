@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // FeedGetAuthorFeed_Output is the output of a app.bsky.feed.getAuthorFeed call.

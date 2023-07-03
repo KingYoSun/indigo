@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // SyncGetBlob calls the XRPC method "com.atproto.sync.getBlob".

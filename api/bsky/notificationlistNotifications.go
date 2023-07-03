@@ -7,9 +7,9 @@ package bsky
 import (
 	"context"
 
-	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
-	"github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // NotificationListNotifications_Notification is a "notification" in the app.bsky.notification.listNotifications schema.

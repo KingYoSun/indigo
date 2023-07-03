@@ -5,7 +5,7 @@ package atproto
 // schema: com.atproto.sync.subscribeRepos
 
 import (
-	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/bluesky-social/indigo/lex/util"
 )
 
 // SyncSubscribeRepos_Commit is a "commit" in the com.atproto.sync.subscribeRepos schema.

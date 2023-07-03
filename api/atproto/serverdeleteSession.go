@@ -7,7 +7,7 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ServerDeleteSession calls the XRPC method "com.atproto.server.deleteSession".

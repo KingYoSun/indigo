@@ -7,7 +7,7 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // SyncListRepos_Output is the output of a com.atproto.sync.listRepos call.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	did "github.com/KingYoSun/indigo/did"
+	did "github.com/bluesky-social/indigo/did"
 	lru "github.com/hashicorp/golang-lru"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"

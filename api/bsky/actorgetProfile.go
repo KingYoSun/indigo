@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ActorGetProfile calls the XRPC method "app.bsky.actor.getProfile".

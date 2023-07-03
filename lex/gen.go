@@ -317,8 +317,8 @@ func GenCodeForSchema(pkg string, prefix string, fname string, reqcode bool, s *
 	pf("\t\"fmt\"\n")
 	pf("\t\"encoding/json\"\n")
 	pf("\tcbg \"github.com/whyrusleeping/cbor-gen\"\n")
-	pf("\t\"github.com/KingYoSun/indigo/xrpc\"\n")
-	pf("\t\"github.com/KingYoSun/indigo/lex/util\"\n")
+	pf("\t\"github.com/bluesky-social/indigo/xrpc\"\n")
+	pf("\t\"github.com/bluesky-social/indigo/lex/util\"\n")
 	for k, v := range imports {
 		if k != prefix {
 			pf("\t%s %q\n", importNameForPrefix(k), v)
@@ -627,7 +627,7 @@ func WriteServerHandlers(w io.Writer, schemas []*Schema, pkg string, impmap map[
 	pf("\t\"context\"\n")
 	pf("\t\"fmt\"\n")
 	pf("\t\"encoding/json\"\n")
-	pf("\t\"github.com/KingYoSun/indigo/xrpc\"\n")
+	pf("\t\"github.com/bluesky-social/indigo/xrpc\"\n")
 	for k, v := range impmap {
 		pf("\t%s\"%s\"\n", importNameForPrefix(k), v)
 	}
@@ -669,7 +669,7 @@ func WriteXrpcServer(w io.Writer, schemas []*Schema, pkg string, impmap map[stri
 	pf("\t\"context\"\n")
 	pf("\t\"fmt\"\n")
 	pf("\t\"encoding/json\"\n")
-	pf("\t\"github.com/KingYoSun/indigo/xrpc\"\n")
+	pf("\t\"github.com/bluesky-social/indigo/xrpc\"\n")
 	pf("\t\"github.com/labstack/echo/v4\"\n")
 
 	var prefixes []string

@@ -7,8 +7,8 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // RepoListRecords_Output is the output of a com.atproto.repo.listRecords call.

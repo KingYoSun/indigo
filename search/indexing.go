@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	bsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/util"
+	bsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/util"
 	"github.com/ipfs/go-cid"
 
 	esapi "github.com/opensearch-project/opensearch-go/v2/opensearchapi"

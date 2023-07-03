@@ -5,10 +5,10 @@ import (
 
 	"gorm.io/gorm"
 
-	bsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/util"
-	bsutil "github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	bsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/util"
+	bsutil "github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 type FeedPost struct {

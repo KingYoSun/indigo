@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // NotificationGetUnreadCount_Output is the output of a app.bsky.notification.getUnreadCount call.

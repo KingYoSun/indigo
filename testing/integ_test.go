@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	atproto "github.com/KingYoSun/indigo/api/atproto"
-	"github.com/KingYoSun/indigo/repo"
-	"github.com/KingYoSun/indigo/xrpc"
+	atproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/repo"
+	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-log/v2"
 	car "github.com/ipld/go-car"

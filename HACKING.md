@@ -77,7 +77,7 @@ To generate server stubs and handlers, push them in a temporary directory
 first, then merge changes in to the actual PDS code:
 
     mkdir tmppds
-    go run ./cmd/lexgen/ --package pds --gen-server --types-import com.atproto:github.com/KingYoSun/indigo/api/atproto --types-import app.bsky:github.com/KingYoSun/indigo/api/bsky --outdir tmppds --gen-handlers ../atproto/lexicons
+    go run ./cmd/lexgen/ --package pds --gen-server --types-import com.atproto:github.com/bluesky-social/indigo/api/atproto --types-import app.bsky:github.com/bluesky-social/indigo/api/bsky --outdir tmppds --gen-handlers ../atproto/lexicons
 
 ## tips and tricks
 

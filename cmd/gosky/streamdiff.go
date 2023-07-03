@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	comatproto "github.com/KingYoSun/indigo/api/atproto"
-	"github.com/KingYoSun/indigo/events"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/events"
 	"github.com/gorilla/websocket"
 	cli "github.com/urfave/cli/v2"
 )

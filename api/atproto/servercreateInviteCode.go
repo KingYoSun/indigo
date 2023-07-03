@@ -7,7 +7,7 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ServerCreateInviteCode_Input is the input argument to a com.atproto.server.createInviteCode call.

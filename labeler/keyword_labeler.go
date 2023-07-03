@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	appbsky "github.com/KingYoSun/indigo/api/bsky"
+	appbsky "github.com/bluesky-social/indigo/api/bsky"
 )
 
 type KeywordLabeler struct {

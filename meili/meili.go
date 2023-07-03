@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"sync"
 
-	appbsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/models"
-	"github.com/KingYoSun/indigo/repo"
-	"github.com/KingYoSun/indigo/repomgr"
+	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/models"
+	"github.com/bluesky-social/indigo/repo"
+	"github.com/bluesky-social/indigo/repomgr"
 
 	logging "github.com/ipfs/go-log"
 

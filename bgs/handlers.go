@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"strings"
 
-	atproto "github.com/KingYoSun/indigo/api/atproto"
-	comatprototypes "github.com/KingYoSun/indigo/api/atproto"
-	appbsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/repo"
-	"github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	atproto "github.com/bluesky-social/indigo/api/atproto"
+	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
+	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/repo"
+	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/ipfs/go-cid"
 	"github.com/labstack/echo/v4"
 )

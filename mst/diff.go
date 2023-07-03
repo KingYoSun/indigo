@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KingYoSun/indigo/util"
+	"github.com/bluesky-social/indigo/util"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 )

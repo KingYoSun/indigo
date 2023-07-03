@@ -9,9 +9,9 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	lexutil "github.com/KingYoSun/indigo/lex/util"
-	"github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/version"
+	lexutil "github.com/bluesky-social/indigo/lex/util"
+	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/version"
 )
 
 type HiveAILabeler struct {

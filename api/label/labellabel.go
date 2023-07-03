@@ -1,7 +1,7 @@
 package label
 
 import (
-	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/bluesky-social/indigo/lex/util"
 )
 
 // schema: com.atproto.label.label

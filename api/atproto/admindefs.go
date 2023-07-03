@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/bluesky-social/indigo/lex/util"
 )
 
 // AdminDefs_ActionReversal is a "actionReversal" in the com.atproto.admin.defs schema.

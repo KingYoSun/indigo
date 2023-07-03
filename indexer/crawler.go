@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
-	comatproto "github.com/KingYoSun/indigo/api/atproto"
-	"github.com/KingYoSun/indigo/models"
-	"github.com/KingYoSun/indigo/util"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/models"
+	"github.com/bluesky-social/indigo/util"
 
 	"go.opentelemetry.io/otel"
 )

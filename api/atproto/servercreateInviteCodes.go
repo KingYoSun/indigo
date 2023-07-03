@@ -7,7 +7,7 @@ package atproto
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ServerCreateInviteCodes_AccountCodes is a "accountCodes" in the com.atproto.server.createInviteCodes schema.

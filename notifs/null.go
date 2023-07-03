@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	appbskytypes "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/models"
-	"github.com/KingYoSun/indigo/util"
+	appbskytypes "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/models"
+	"github.com/bluesky-social/indigo/util"
 )
 
 type NullNotifs struct {

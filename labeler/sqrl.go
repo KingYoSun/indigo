@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/http"
 
-	appbsky "github.com/KingYoSun/indigo/api/bsky"
-	"github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/version"
+	appbsky "github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/version"
 )
 
 type SQRLLabeler struct {

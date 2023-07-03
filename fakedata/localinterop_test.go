@@ -5,8 +5,8 @@ package fakedata
 import (
 	"testing"
 
-	"github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/xrpc"
 
 	"github.com/stretchr/testify/assert"
 )

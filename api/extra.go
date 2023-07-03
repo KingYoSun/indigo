@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KingYoSun/indigo/did"
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/did"
+	"github.com/bluesky-social/indigo/xrpc"
 	logging "github.com/ipfs/go-log"
 	otel "go.opentelemetry.io/otel"
 )

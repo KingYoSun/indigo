@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KingYoSun/indigo/models"
+	"github.com/bluesky-social/indigo/models"
 	"github.com/labstack/echo/v4"
 )
 

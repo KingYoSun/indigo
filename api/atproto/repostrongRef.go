@@ -5,7 +5,7 @@ package atproto
 // schema: com.atproto.repo.strongRef
 
 import (
-	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/bluesky-social/indigo/lex/util"
 )
 
 func init() {

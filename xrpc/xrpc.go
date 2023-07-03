@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/KingYoSun/indigo/util"
-	"github.com/KingYoSun/indigo/version"
+	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/version"
 )
 
 type Client struct {

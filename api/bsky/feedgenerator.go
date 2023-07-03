@@ -5,7 +5,7 @@ package bsky
 // schema: app.bsky.feed.generator
 
 import (
-	"github.com/KingYoSun/indigo/lex/util"
+	"github.com/bluesky-social/indigo/lex/util"
 )
 
 func init() {

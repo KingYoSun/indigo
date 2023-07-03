@@ -2,7 +2,7 @@
 
 # indigo: golang code for Bluesky's atproto services
 
-Some Bluesky software is developed in Typescript, and lives in the [KingYoSun/atproto](https://github.com/KingYoSun/atproto) repository. Some is developed in Go, and lives here.
+Some Bluesky software is developed in Typescript, and lives in the [bluesky-social/atproto](https://github.com/bluesky-social/atproto) repository. Some is developed in Go, and lives here.
 
 <p align="center"><img src="https://static.bnewbold.net/tmp/under_construction_bar.gif" /></p>
 

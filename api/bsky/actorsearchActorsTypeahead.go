@@ -7,7 +7,7 @@ package bsky
 import (
 	"context"
 
-	"github.com/KingYoSun/indigo/xrpc"
+	"github.com/bluesky-social/indigo/xrpc"
 )
 
 // ActorSearchActorsTypeahead_Output is the output of a app.bsky.actor.searchActorsTypeahead call.

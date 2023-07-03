@@ -10,10 +10,10 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 
-	cliutil "github.com/KingYoSun/indigo/cmd/gosky/util"
-	"github.com/KingYoSun/indigo/search"
+	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
+	"github.com/bluesky-social/indigo/search"
 
-	"github.com/KingYoSun/indigo/version"
+	"github.com/bluesky-social/indigo/version"
 	logging "github.com/ipfs/go-log"
 	es "github.com/opensearch-project/opensearch-go/v2"
 	cli "github.com/urfave/cli/v2"
