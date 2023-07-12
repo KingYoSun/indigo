@@ -107,8 +107,8 @@ Set the log level to be more verbose, using an env variable:
 
 Running against local typescript PDS in `dev-env` mode:
 
-		# as "alice" user
-		go run ./cmd/gosky/ --pds http://localhost:2583 createSession alice.test hunter2 > bsky.auth
+	# as "alice" user
+	go run ./cmd/gosky/ --pds http://localhost:2583 createSession alice.test hunter2 > bsky.auth
 
 The `bsky.auth` file is the default place that `gosky` and other client
 commands will look for auth info.
