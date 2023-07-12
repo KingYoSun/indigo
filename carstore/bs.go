@@ -263,7 +263,7 @@ func (cs *CarStore) putLastShardCache(user util.Uid, ls *CarShard) {
 	cs.lastShardCache[user] = ls
 }
 
-func (cs *CarStore) GetLastShard(ctx context.Context, user util.Uid) (*CarShard, error) {
+func (cs *CarStore) getLastShard(ctx context.Context, user util.Uid) (*CarShard, error) {
 	maybeLs := cs.checkLastShardCache(user)
 	if maybeLs != nil {
 		return maybeLs, nil
@@ -291,12 +291,12 @@ func (cs *CarStore) NewDeltaSession(ctx context.Context, user util.Uid, prev *ci
 
 	// TODO: ensure that we don't write updates on top of the wrong head
 	// this needs to be a compare and swap type operation
-	lastShard, err := cs.GetLastShard(ctx, user)
+	lastShard, err := cs.getLastShard(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	if prev != nil && lastShard.ID != 0 {
+	if prev != nil {
 		if lastShard.Root.CID != *prev {
 			fork, err := cs.checkFork(ctx, user, *prev)
 			if err != nil {
@@ -838,7 +838,7 @@ func (cs *CarStore) ImportSlice(ctx context.Context, uid util.Uid, prev *cid.Cid
 }
 
 func (cs *CarStore) GetUserRepoHead(ctx context.Context, user util.Uid) (cid.Cid, error) {
-	lastShard, err := cs.GetLastShard(ctx, user)
+	lastShard, err := cs.getLastShard(ctx, user)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -874,7 +874,7 @@ func (cs *CarStore) Stat(ctx context.Context, usr util.Uid) ([]UserStat, error) 
 }
 
 func (cs *CarStore) checkFork(ctx context.Context, user util.Uid, prev cid.Cid) (bool, error) {
-	lastShard, err := cs.GetLastShard(ctx, user)
+	lastShard, err := cs.getLastShard(ctx, user)
 	if err != nil {
 		return false, err
 	}
