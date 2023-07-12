@@ -119,9 +119,8 @@ func run(args []string) {
 			Name: "disk-blob-store",
 		},
 		&cli.StringFlag{
-			Name:			"admin-key",
-			Value:		"DevAdminPass",
-			EnvVars:	[]string{"BGS_ADMIN_KEY"},
+			Name:    "admin-key",
+			EnvVars: []string{"BGS_ADMIN_KEY"},
 		},
 	}
 
@@ -237,7 +236,7 @@ func run(args []string) {
 
 		notifman := &notifs.NullNotifs{}
 
-		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, didr, repoman, true, cctx.Bool("aggregation"))
+		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
 		if err != nil {
 			return err
 		}
@@ -267,7 +266,7 @@ func run(args []string) {
 			hr = &api.TestHandleResolver{}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, didr, blobstore, hr, !cctx.Bool("crawl-insecure-ws"))
+		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, hr, !cctx.Bool("crawl-insecure-ws"))
 		if err != nil {
 			return err
 		}

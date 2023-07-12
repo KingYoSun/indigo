@@ -23,6 +23,7 @@ services:
       DATABASE_URL: postgres://admin:password@db:5432/bgs
       CARSTORE_DATABASE_URL: postgres://admin:password@db:5432/carstore
       MEILISEARCH_URL: http://meili:7700
+      BGS_ADMIN_KEY: DevAdminPass
   db:
     image: postgres:14.6
     container_name: postgres

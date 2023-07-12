@@ -15,7 +15,6 @@ import (
 	"github.com/bluesky-social/indigo/meili"
 	"github.com/bluesky-social/indigo/models"
 	"github.com/bluesky-social/indigo/notifs"
-	"github.com/bluesky-social/indigo/plc"
 	"github.com/bluesky-social/indigo/repomgr"
 	"github.com/bluesky-social/indigo/util"
 	"github.com/bluesky-social/indigo/xrpc"
@@ -55,7 +54,7 @@ type Indexer struct {
 	ApplyPDSClientSettings func(*xrpc.Client)
 }
 
-func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr plc.PLCClient, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
+func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr did.Resolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
 	db.AutoMigrate(&models.FeedPost{})
 	db.AutoMigrate(&models.ActorInfo{})
 	db.AutoMigrate(&models.FollowRecord{})
