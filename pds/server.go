@@ -78,7 +78,8 @@ func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore,
 
 	kmgr := indexer.NewKeyManager(didr, serkey)
 
-	repoman := repomgr.NewRepoManager(db, cs, kmgr)
+	hs := repomgr.NewDbHeadStore(db)
+	repoman := repomgr.NewRepoManager(hs, cs, kmgr)
 	notifman := notifs.NewNotificationManager(db, repoman.GetRecord)
 
 	ix, err := indexer.NewIndexer(db, meilicli ,notifman, evtman, didr, repoman, false, true)
