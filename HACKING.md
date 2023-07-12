@@ -1,3 +1,4 @@
+
 ## git repo contents
 
 Commands (run with, eg, `go run ./cmd/bigsky`):
@@ -15,8 +16,8 @@ Commands (run with, eg, `go run ./cmd/bigsky`):
 Packages:
 
 - `api`: mostly output of lexgen (codegen) for lexicons: structs, CBOR marshaling. some higher-level code, and a PLC client (may rename)
-  - `api/atprot`: generated types for `com.atproto` lexicon
-  - `api/bsky`: generated types for `app.bsky` lexicon
+    - `api/atprot`: generated types for `com.atproto` lexicon
+    - `api/bsky`: generated types for `app.bsky` lexicon
 - `bgs`: server implementation for crawling, etc
 - `carstore`: library for storing repo data in CAR files on disk, plus a metadata SQL db
 - `events`: types, codegen CBOR helpers, and persistence for event feeds
@@ -26,7 +27,7 @@ Packages:
 - `mst`: merkle search tree implementation
 - `notifs`: helpers for notification objects (hydration, etc)
 - `pds`: PDS server implementation
-- `plc`: implementation of a _fake_ PLC server (not persisted), and a PLC client
+- `plc`: implementation of a *fake* PLC server (not persisted), and a PLC client
 - `repo`: implements atproto repo on top of a blockstore. CBOR types
 - `repomgr`: wraps many repos with a single carstore backend. handles events, locking
 - `search`: search server implementation
@@ -37,6 +38,7 @@ Packages:
 Other:
 
 - `testscripts`: shell scripts that run gosky (CLI client) against local PDS
+
 
 ## jargon
 
@@ -51,6 +53,7 @@ Other:
 - CID: content identifier for binary blobs, basically a flexible encoding of hash values
 - MST: Merkle Search Tree, a key/value map data structure using content addressed nodes
 
+
 ## lexicon and CBOR marshaling code generation
 
 `gen/main.go` has a list of types internal to packages in this repo which need CBOR helper codegen. If you edit those types, or update the listed types/packages, re-run codegen like:
@@ -63,7 +66,7 @@ Other:
 
 To run codegen for new or updated Lexicons, using lexgen, first place (or git
 checkout) the JSON lexicon files at `../atproto/`.
-Then, in _this_ repository (indigo), run commands like:
+Then, in *this* repository (indigo), run commands like:
 
     go run ./cmd/lexgen/ --package bsky --prefix app.bsky --outdir api/bsky ../atproto/lexicons/app/bsky/
     go run ./cmd/lexgen/ --package atproto --prefix com.atproto --outdir api/atproto ../atproto/lexicons/com/atproto/
@@ -78,6 +81,7 @@ first, then merge changes in to the actual PDS code:
 
     mkdir tmppds
     go run ./cmd/lexgen/ --package pds --gen-server --types-import com.atproto:github.com/bluesky-social/indigo/api/atproto --types-import app.bsky:github.com/bluesky-social/indigo/api/bsky --outdir tmppds --gen-handlers ../atproto/lexicons
+
 
 ## tips and tricks
 
@@ -98,15 +102,17 @@ Set the log level to be more verbose, using an env variable:
 
     GOLOG_LOG_LEVEL=info go run ./cmd/pds
 
+
 ## gosky basic usage
 
 Running against local typescript PDS in `dev-env` mode:
 
-    # as "alice" user
-    go run ./cmd/gosky/ --pds http://localhost:2583 createSession alice.test hunter2 > bsky.auth
+        # as "alice" user
+        go run ./cmd/gosky/ --pds http://localhost:2583 createSession alice.test hunter2 > bsky.auth
 
 The `bsky.auth` file is the default place that `gosky` and other client
 commands will look for auth info.
+
 
 ## slack report bot basic usage
 
