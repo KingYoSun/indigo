@@ -20,12 +20,12 @@ import (
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/blobs"
 	"github.com/bluesky-social/indigo/carstore"
+	"github.com/bluesky-social/indigo/did"
 	"github.com/bluesky-social/indigo/events"
 	"github.com/bluesky-social/indigo/indexer"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/meili"
 	"github.com/bluesky-social/indigo/models"
-	"github.com/bluesky-social/indigo/plc"
 	"github.com/bluesky-social/indigo/repomgr"
 	"github.com/bluesky-social/indigo/util"
 	bsutil "github.com/bluesky-social/indigo/util"
@@ -52,14 +52,13 @@ var log = logging.Logger("bgs")
 const serverListenerBootTimeout = 5 * time.Second
 
 type BGS struct {
-	Index   	*indexer.Indexer
-	db      	*gorm.DB
-	slurper 	*Slurper
-	meilislur	*meili.MeiliSlurper
-	events  	*events.EventManager
-	didr    	plc.PLCClient
+	Index   *indexer.Indexer
+	db      *gorm.DB
+	slurper *Slurper
+	events  *events.EventManager
+	didr    did.Resolver
 
-	adminPass string
+	meilislur	*meili.MeiliSlurper
 
 	blobs blobs.BlobStore
 	hr    api.HandleResolver
@@ -77,7 +76,7 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr plc.PLCClient, blobs blobs.BlobStore, hr api.HandleResolver, ssl bool) (*BGS, error) {
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr did.Resolver, blobs blobs.BlobStore, hr api.HandleResolver, ssl bool) (*BGS, error) {
 	db.AutoMigrate(models.User{})
 	db.AutoMigrate(AuthToken{})
 	db.AutoMigrate(models.PDS{})
@@ -221,11 +220,6 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 		Format: "method=${method}, uri=${uri}, status=${status} latency=${latency_human}\n",
 	}))
 
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
-	}))
-
 	e.HTTPErrorHandler = func(err error, ctx echo.Context) {
 		switch err := err.(type) {
 		case *echo.HTTPError:
@@ -265,7 +259,6 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 
 	admin := e.Group("/admin", bgs.checkAdminAuth)
 	admin.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
-	admin.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	admin.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
 	admin.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
 	admin.POST("/meili/updateIndexSettings/:index", bgs.HandleMeiliUpdateIndexSettings)
@@ -805,7 +798,6 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 	} else {
 		u = userExsited
 	}
-
 
 	// okay cool, its a user on a server we are peered with
 	// lets make a local record of that user for the future
