@@ -9,9 +9,8 @@ import (
 	label "github.com/bluesky-social/indigo/api/label"
 	"github.com/bluesky-social/indigo/events"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
-	mst "github.com/bluesky-social/indigo/mst"
+	"github.com/bluesky-social/indigo/mst"
 	"github.com/bluesky-social/indigo/repo"
-
 	cbg "github.com/whyrusleeping/cbor-gen"
 )
 
