@@ -21,11 +21,16 @@ import (
 
 var log = logging.Logger("meili")
 
+type MeiliUser struct {
+	Did    string `json:"did"`
+	Handle string `json:"handle"`
+}
+
 type MeiliFeedPost struct {
 	Cid 			string						`json:"cid"`
 	Tid				string						`json:"tid"`
 	Post			*appbsky.FeedPost	`json:"post"`
-	User			*models.User			`json:"user"`
+	User			*MeiliUser				`json:"user"`
 	CreatedAt	int64							`json:"createdAt"`
 }
 
@@ -119,7 +124,7 @@ func (s *MeiliSlurper) FeeePostToMeili(ctx context.Context, feedPost *models.Fee
 		return err
 	}
 
-	var user *models.User
+	var user *MeiliUser
 
 	if err := s.db.Find(&user, "id = ?", feedPost.Author).Error; err != nil {
 		return err

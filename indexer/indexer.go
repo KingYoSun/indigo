@@ -12,7 +12,6 @@ import (
 	"github.com/bluesky-social/indigo/did"
 	"github.com/bluesky-social/indigo/events"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/meili"
 	"github.com/bluesky-social/indigo/models"
 	"github.com/bluesky-social/indigo/notifs"
 	"github.com/bluesky-social/indigo/repomgr"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	"github.com/meilisearch/meilisearch-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
@@ -35,8 +33,6 @@ const MaxOpsSliceLength = 200
 
 type Indexer struct {
 	db *gorm.DB
-
-	meili *meili.MeiliSlurper
 
 	notifman notifs.NotificationManager
 	events   *events.EventManager
@@ -54,7 +50,7 @@ type Indexer struct {
 	ApplyPDSClientSettings func(*xrpc.Client)
 }
 
-func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.NotificationManager, evtman *events.EventManager, didr did.Resolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
+func NewIndexer(db *gorm.DB, notifman notifs.NotificationManager, evtman *events.EventManager, didr did.Resolver, repoman *repomgr.RepoManager, crawl, aggregate bool) (*Indexer, error) {
 	db.AutoMigrate(&models.FeedPost{})
 	db.AutoMigrate(&models.ActorInfo{})
 	db.AutoMigrate(&models.FollowRecord{})
@@ -73,8 +69,6 @@ func NewIndexer(db *gorm.DB, meilicli *meilisearch.Client, notifman notifs.Notif
 		},
 		ApplyPDSClientSettings: func(*xrpc.Client) {},
 	}
-
-	ix.meili = meili.NewMeiliSlurper(db, meilicli, repoman)
 
 	if crawl {
 		c, err := NewCrawlDispatcher(ix.FetchAndIndexRepo, 10)
@@ -207,9 +201,6 @@ func (ix *Indexer) handleRecordDelete(ctx context.Context, evt *repomgr.RepoEven
 			return err
 		}
 
-		if err := ix.meili.DeleteDocument(ctx, fp.Cid); err != nil {
-			return err
-		}
 	case "app.bsky.feed.repost":
 		if err := ix.db.Where("reposter = ? AND rkey = ?", evt.User, op.Rkey).Delete(&models.RepostRecord{}).Error; err != nil {
 			return err
@@ -507,11 +498,6 @@ func (ix *Indexer) handleRecordUpdate(ctx context.Context, evt *repomgr.RepoEven
 			return err
 		}
 
-		// Add to Meilisearch
-		if err := ix.meili.FeeePostToMeili(ctx, fp); err != nil {
-			return err
-		}
-
 		return nil
 	case *bsky.FeedRepost:
 		var rr models.RepostRecord
@@ -571,7 +557,7 @@ func (ix *Indexer) GetPostOrMissing(ctx context.Context, uri string) (*models.Fe
 	}
 
 	var post models.FeedPost
-	if err := ix.db.Find(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Raw("SELECT id FROM users WHERE did = ? AND deleted_at IS NULL LIMIT 1", puri.Did)).Error; err != nil {
+	if err := ix.db.Find(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Model(models.ActorInfo{}).Where("did = ?", puri.Did).Select("id")).Error; err != nil {
 		return nil, err
 	}
 
@@ -646,12 +632,6 @@ func (ix *Indexer) handleRecordCreateFeedPost(ctx context.Context, user util.Uid
 		}
 	}
 
-	// Add to Meilisearch
-	if err := ix.meili.FeeePostToMeili(ctx, &fp); err != nil {
-		return err
-	}
-
-	// Add new post notification
 	if err := ix.addNewPostNotification(ctx, rec, &fp, mentions); err != nil {
 		return err
 	}
@@ -832,7 +812,7 @@ func (ix *Indexer) GetPost(ctx context.Context, uri string) (*models.FeedPost, e
 	}
 
 	var post models.FeedPost
-	if err := ix.db.First(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Raw("SELECT id FROM users WHERE did = ? AND deleted_at IS NULL LIMIT 1", puri.Did)).Error; err != nil {
+	if err := ix.db.First(&post, "rkey = ? AND author = (?)", puri.Rkey, ix.db.Model(models.ActorInfo{}).Where("did = ?", puri.Did).Select("id")).Error; err != nil {
 		return nil, err
 	}
 

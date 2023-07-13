@@ -25,7 +25,6 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -71,18 +70,6 @@ func run(args []string) {
 			Usage:   "database connection string for carstore database",
 			Value:   "sqlite://./data/bigsky/carstore.sqlite",
 			EnvVars: []string{"CARSTORE_DATABASE_URL"},
-		},
-		&cli.StringFlag{
-			Name:    "meilisearch-url",
-			Usage:   "host url for meilisearch",
-			Value:   "http://localhost:7700",
-			EnvVars: []string{"MEILISEARCH_URL"},
-		},
-		&cli.StringFlag{
-			Name:    "meilisearch-apikey",
-			Usage:   "apikey for meilisearch",
-			Value:   "meili-master-key",
-			EnvVars: []string{"MEILISEARCH_APIKEY"},
 		},
 		&cli.BoolFlag{
 			Name: "db-tracing",
@@ -200,11 +187,6 @@ func run(args []string) {
 			return err
 		}
 
-		meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
-			Host: cctx.String("meilisearch-url"),
-			APIKey: cctx.String("meilisearch-apikey"),
-		})
-
 		if cctx.Bool("db-tracing") {
 			if err := db.Use(tracing.NewPlugin()); err != nil {
 				return err
@@ -236,7 +218,7 @@ func run(args []string) {
 
 		notifman := &notifs.NullNotifs{}
 
-		ix, err := indexer.NewIndexer(db, meilicli, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
+		ix, err := indexer.NewIndexer(db, notifman, evtman, cachedidr, repoman, true, cctx.Bool("aggregation"))
 		if err != nil {
 			return err
 		}
@@ -266,7 +248,7 @@ func run(args []string) {
 			hr = &api.TestHandleResolver{}
 		}
 
-		bgs, err := bgs.NewBGS(db, ix, meilicli, repoman, evtman, cachedidr, blobstore, hr, !cctx.Bool("crawl-insecure-ws"))
+		bgs, err := bgs.NewBGS(db, ix, repoman, evtman, cachedidr, blobstore, hr, !cctx.Bool("crawl-insecure-ws"))
 		if err != nil {
 			return err
 		}

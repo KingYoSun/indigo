@@ -14,7 +14,6 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 
 	logging "github.com/ipfs/go-log"
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -167,12 +166,7 @@ func run(args []string) {
 			return err
 		}
 
-		meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
-			Host: "http://localhost:7700",
-			APIKey: "meili-master-key",
-		})
-
-		srv, err := pds.NewServer(db, meilicli, cstore, key, pdsdomain, pdshost, didr, jwtsecret)
+		srv, err := pds.NewServer(db, cstore, key, pdsdomain, pdshost, didr, jwtsecret)
 		if err != nil {
 			return err
 		}

@@ -33,7 +33,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/whyrusleeping/go-did"
 	"gorm.io/gorm"
 )
@@ -69,7 +68,7 @@ const UserActorDeclType = "app.bsky.system.actorUser"
 // NewServer.
 const serverListenerBootTimeout = 5 * time.Second
 
-func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore, serkey *did.PrivKey, handleSuffix, serviceUrl string, didr plc.PLCClient, jwtkey []byte) (*Server, error) {
+func NewServer(db *gorm.DB, cs *carstore.CarStore, serkey *did.PrivKey, handleSuffix, serviceUrl string, didr plc.PLCClient, jwtkey []byte) (*Server, error) {
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Peering{})
 
@@ -81,7 +80,7 @@ func NewServer(db *gorm.DB, meilicli *meilisearch.Client, cs *carstore.CarStore,
 	repoman := repomgr.NewRepoManager(hs, cs, kmgr)
 	notifman := notifs.NewNotificationManager(db, repoman.GetRecord)
 
-	ix, err := indexer.NewIndexer(db, meilicli ,notifman, evtman, didr, repoman, false, true)
+	ix, err := indexer.NewIndexer(db, notifman, evtman, didr, repoman, false, true)
 	if err != nil {
 		return nil, err
 	}

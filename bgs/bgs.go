@@ -24,7 +24,6 @@ import (
 	"github.com/bluesky-social/indigo/events"
 	"github.com/bluesky-social/indigo/indexer"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
-	"github.com/bluesky-social/indigo/meili"
 	"github.com/bluesky-social/indigo/models"
 	"github.com/bluesky-social/indigo/repomgr"
 	"github.com/bluesky-social/indigo/util"
@@ -35,7 +34,6 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	meilisearch "github.com/meilisearch/meilisearch-go"
 	promclient "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -58,8 +56,6 @@ type BGS struct {
 	events  *events.EventManager
 	didr    did.Resolver
 
-	meilislur	*meili.MeiliSlurper
-
 	blobs blobs.BlobStore
 	hr    api.HandleResolver
 
@@ -76,8 +72,8 @@ type BGS struct {
 	repoman *repomgr.RepoManager
 }
 
-func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repoman *repomgr.RepoManager, evtman *events.EventManager, didr did.Resolver, blobs blobs.BlobStore, hr api.HandleResolver, ssl bool) (*BGS, error) {
-	db.AutoMigrate(models.User{})
+func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtman *events.EventManager, didr did.Resolver, blobs blobs.BlobStore, hr api.HandleResolver, ssl bool) (*BGS, error) {
+	db.AutoMigrate(User{})
 	db.AutoMigrate(AuthToken{})
 	db.AutoMigrate(models.PDS{})
 	db.AutoMigrate(models.DomainBan{})
@@ -94,8 +90,6 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, meilicli *meilisearch.Client, repo
 	}
 
 	ix.CreateExternalUser = bgs.createExternalUser
-
-	bgs.meilislur = meili.NewMeiliSlurper(db, meilicli, repoman)
 
 	s, err := NewSlurper(db, bgs.handleFedEvent, ssl)
 	if err != nil {
@@ -254,14 +248,9 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.POST("/xrpc/com.atproto.sync.requestCrawl", bgs.HandleComAtprotoSyncRequestCrawl)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", bgs.HandleComAtprotoSyncNotifyOfUpdate)
-	e.GET("/meili/search", bgs.HandleMeiliSearch)
 	e.GET("/xrpc/_health", bgs.HandleHealthCheck)
 
 	admin := e.Group("/admin", bgs.checkAdminAuth)
-	admin.GET("/xrpc/com.atproto.sync.subscribeRepos", bgs.EventsHandler)
-	admin.GET("/debug/getRecord", bgs.HandleDebugGetRecord)
-	admin.GET("/meili/requestCopyRecord", bgs.HandleMeiliRequestCopyRecord)
-	admin.POST("/meili/updateIndexSettings/:index", bgs.HandleMeiliUpdateIndexSettings)
 	admin.POST("/subs/setEnabled", bgs.handleAdminSetSubsEnabled)
 	admin.GET("/subs/getUpstreamConns", bgs.handleAdminGetUpstreamConns)
 	admin.POST("/subs/killUpstream", bgs.handleAdminKillUpstreamConn)
@@ -346,6 +335,21 @@ func (bgs *BGS) checkAdminAuth(next echo.HandlerFunc) echo.HandlerFunc {
 
 		return next(e)
 	}
+}
+
+type User struct {
+	ID        bsutil.Uid `gorm:"primarykey"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt 	`gorm:"index"`
+	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
+	Did       string					`gorm:"uniqueIndex"`
+	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
+
+	// TakenDown is set to true if the user in question has been taken down.
+	// A user in this state will have all future events related to it dropped
+	// and no data about this user will be served.
+	TakenDown bool
 }
 
 type addTargetBody struct {
@@ -494,8 +498,8 @@ func (s *BGS) findDomainBan(ctx context.Context, host string) (bool, error) {
 	return true, nil
 }
 
-func (bgs *BGS) lookupUserByDid(ctx context.Context, did string) (*models.User, error) {
-	var u models.User
+func (bgs *BGS) lookupUserByDid(ctx context.Context, did string) (*User, error) {
+	var u User
 	if err := bgs.db.Find(&u, "did = ?", did).Error; err != nil {
 		return nil, err
 	}
@@ -534,7 +538,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 				return fmt.Errorf("fed event create external user: %w", err)
 			}
 
-			u = new(models.User)
+			u = new(User)
 			u.ID = subj.Uid
 			u.Did = evt.Repo
 		}
@@ -747,7 +751,7 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		log.Infow("lost the race to create a new user", "did", did, "handle", handle)
 		if exu.PDS != peering.ID {
 			// User is now on a different PDS, update
-			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("pds", peering.ID).Error; err != nil {
+			if err := s.db.Model(User{}).Where("id = ?", exu.ID).Update("pds", peering.ID).Error; err != nil {
 				return nil, fmt.Errorf("failed to update users pds: %w", err)
 			}
 
@@ -755,7 +759,7 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 
 		if exu.Handle != handle {
 			// Users handle has changed, update
-			if err := s.db.Model(models.User{}).Where("id = ?", exu.ID).Update("handle", handle).Error; err != nil {
+			if err := s.db.Model(User{}).Where("id = ?", exu.ID).Update("handle", handle).Error; err != nil {
 				return nil, fmt.Errorf("failed to update users handle: %w", err)
 			}
 
@@ -777,26 +781,16 @@ func (s *BGS) createExternalUser(ctx context.Context, did string) (*models.Actor
 		return nil, err
 	}
 
-	var userExsited models.User
-	if err:= s.db.Find(&userExsited, "did = ?", did).Error; err != nil {
-		return nil, fmt.Errorf("failed to find users: %w", err)
+	// TODO: request this users info from their server to fill out our data...
+	u := User{
+		Handle: handle,
+		Did:    did,
+		PDS:    peering.ID,
 	}
 
-	var u models.User
-	if userExsited.ID == 0 {
-		// TODO: request this users info from their server to fill out our data...
-		u = models.User{
-			Handle: handle,
-			Did:    did,
-			PDS:    peering.ID,
-		}
-
-		if err := s.db.Create(&u).Error; err != nil {
-			// some debugging...
-			return nil, fmt.Errorf("failed to create other pds user: %w", err)
-		}
-	} else {
-		u = userExsited
+	if err := s.db.Create(&u).Error; err != nil {
+		// some debugging...
+		return nil, fmt.Errorf("failed to create other pds user: %w", err)
 	}
 
 	// okay cool, its a user on a server we are peered with
@@ -822,7 +816,7 @@ func (bgs *BGS) TakeDownRepo(ctx context.Context, did string) error {
 		return err
 	}
 
-	if err := bgs.db.Model(models.User{}).Where("id = ?", u.ID).Update("taken_down", true).Error; err != nil {
+	if err := bgs.db.Model(User{}).Where("id = ?", u.ID).Update("taken_down", true).Error; err != nil {
 		return err
 	}
 
@@ -843,7 +837,7 @@ func (bgs *BGS) ReverseTakedown(ctx context.Context, did string) error {
 		return err
 	}
 
-	if err := bgs.db.Model(models.User{}).Where("id = ?", u.ID).Update("taken_down", false).Error; err != nil {
+	if err := bgs.db.Model(User{}).Where("id = ?", u.ID).Update("taken_down", false).Error; err != nil {
 		return err
 	}
 

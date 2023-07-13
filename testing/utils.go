@@ -34,7 +34,6 @@ import (
 	bsutil "github.com/bluesky-social/indigo/util"
 	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/ipfs/go-cid"
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/multiformats/go-multihash"
 	"github.com/whyrusleeping/go-did"
 
@@ -129,11 +128,6 @@ func SetupPDS(ctx context.Context, suffix string, plc plc.PLCClient) (*TestPDS, 
 		Type: did.KeyTypeP256,
 	}
 
-	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
-		Host: "http://localhost:7700",
-		APIKey: "meili-master-key",
-	})
-
 	var lc net.ListenConfig
 	li, err := lc.Listen(ctx, "tcp", "localhost:0")
 	if err != nil {
@@ -141,7 +135,7 @@ func SetupPDS(ctx context.Context, suffix string, plc plc.PLCClient) (*TestPDS, 
 	}
 
 	host := li.Addr().String()
-	srv, err := pds.NewServer(maindb, meilicli, cs, serkey, suffix, host, plc, []byte(host+suffix))
+	srv, err := pds.NewServer(maindb, cs, serkey, suffix, host, plc, []byte(host+suffix))
 	if err != nil {
 		return nil, err
 	}
@@ -442,12 +436,7 @@ func SetupBGS(ctx context.Context, didr plc.PLCClient) (*TestBGS, error) {
 
 	evtman := events.NewEventManager(dbpersist)
 
-	meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
-		Host: "http://localhost:7700",
-		APIKey: "meili-master-key",
-	})
-
-	ix, err := indexer.NewIndexer(maindb, meilicli, notifman, evtman, didr, repoman, true, true)
+	ix, err := indexer.NewIndexer(maindb, notifman, evtman, didr, repoman, true, true)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +449,7 @@ func SetupBGS(ctx context.Context, didr plc.PLCClient) (*TestBGS, error) {
 
 	tr := &api.TestHandleResolver{}
 
-	b, err := bgs.NewBGS(maindb, ix, meilicli, repoman, evtman, didr, nil, tr, false)
+	b, err := bgs.NewBGS(maindb, ix, repoman, evtman, didr, nil, tr, false)
 	if err != nil {
 		return nil, err
 	}

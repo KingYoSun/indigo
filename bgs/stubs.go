@@ -7,7 +7,6 @@ import (
 
 	comatprototypes "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/labstack/echo/v4"
-	"github.com/meilisearch/meilisearch-go"
 	"go.opentelemetry.io/otel"
 )
 
@@ -27,10 +26,6 @@ func (s *BGS) RegisterHandlersComAtproto(e *echo.Echo) error {
 	e.GET("/xrpc/com.atproto.sync.listRepos", s.HandleComAtprotoSyncListRepos)
 	e.GET("/xrpc/com.atproto.sync.notifyOfUpdate", s.HandleComAtprotoSyncNotifyOfUpdate)
 	e.GET("/xrpc/com.atproto.sync.requestCrawl", s.HandleComAtprotoSyncRequestCrawl)
-	e.GET("/debug/getRepo", s.HandleDebugGetRecord)
-	e.GET("/meili/requestCopyRecord", s.HandleMeiliRequestCopyRecord)
-	e.POST("/meili/updateIndexSettings/:index", s.HandleMeiliUpdateIndexSettings)
-	e.GET("/meili/search", s.HandleMeiliSearch)
 	return nil
 }
 
@@ -222,78 +217,4 @@ func (s *BGS) HandleComAtprotoSyncRequestCrawl(c echo.Context) error {
 		return handleErr
 	}
 	return nil
-}
-
-func (s *BGS) HandleDebugGetRecord(c echo.Context) error {
-	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleDebugGetRepo")
-	defer span.End()
-	did := c.QueryParam("did")
-	cid := c.QueryParam("cid")
-	rkey := c.QueryParam("rkey")
-
-  out, err := s.handleDebugGetRepoJson(ctx, did, cid, rkey)
-	if err != nil {
-		return c.JSON(500, err.Error())
-	}
-
-	return c.JSON(200, string(out))
-}
-
-func (s *BGS) HandleMeiliRequestCopyRecord(c echo.Context) error {
-	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliRequestCopyRecord")
-	defer span.End()
-	hostname := c.QueryParam("hostname")
-	// func (s *BGS) handleComAtprotoSyncRequestCrawl(ctx context.Context,hostname string) error
-	handleErr := s.handleMeiliRequestCopyRecord(ctx, hostname)
-	if handleErr != nil {
-		return c.JSON(500, handleErr.Error())
-	}
-
-	return nil
-}
-
-func (s *BGS) HandleMeiliUpdateIndexSettings(c echo.Context) error {
-	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliUpdateIndexSettings")
-	defer span.End()
-
-	index := c.Param("index")
-	var settings meilisearch.Settings
-	if err := c.Bind(&settings); err != nil {
-		return c.JSON(500, err.Error())
-	}
-
-	resp, err := s.meilislur.UpdateIndexSetting(ctx, index, settings)
-	if err != nil {
-		return c.JSON(500, err.Error())
-	}
-
-	return c.JSON(200, resp.Status)
-}
-
-func (s *BGS) HandleMeiliSearch(c echo.Context) error {
-	ctx, span := otel.Tracer("server").Start(c.Request().Context(), "HandleMeiliSearch")
-	defer span.End()
-
-	keyword := c.QueryParam("q")
-	hostname := c.QueryParam("h")
-	sort := c.QueryParam("s")
-	offsetStr := c.QueryParam("o")
-
-	var offset int64
-	var err error
-	if offsetStr == "" {
-		offset = 0
-	} else {
-		offset, err = strconv.ParseInt(c.QueryParam("o"), 10, 64)
-		if err != nil {
-			return err
-		}
-	}
-
-	var posts []interface{}
-	if posts, err = s.meilislur.Search(ctx, keyword, hostname, sort, offset); err != nil {
-		return c.JSON(500, err.Error())
-	}
-
-	return c.JSON(200, posts)
 }
