@@ -90,7 +90,6 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtm
 	}
 
 	ix.CreateExternalUser = bgs.createExternalUser
-
 	s, err := NewSlurper(db, bgs.handleFedEvent, ssl)
 	if err != nil {
 		return nil, err
@@ -341,10 +340,10 @@ type User struct {
 	ID        bsutil.Uid `gorm:"primarykey"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt 	`gorm:"index"`
-	Handle    string         	`gorm:"index:idx_handle_pds,unique"`
-	Did       string					`gorm:"uniqueIndex"`
-	PDS       uint						`gorm:"index:idx_handle_pds,unique"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+	Handle    string         `gorm:"uniqueIndex"`
+	Did       string         `gorm:"uniqueIndex"`
+	PDS       uint
 
 	// TakenDown is set to true if the user in question has been taken down.
 	// A user in this state will have all future events related to it dropped
@@ -581,7 +580,7 @@ func (bgs *BGS) handleFedEvent(ctx context.Context, host *models.PDS, env *event
 				return fmt.Errorf("cannot process repo fork")
 			}
 
-			return fmt.Errorf("handle user event failed, uid: %v, did: %s, err: %w", u.ID, u.Did, err)
+			return fmt.Errorf("handle user event failed: %w", err)
 		}
 
 		// sync blobs
