@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,13 +16,13 @@ import (
 	"github.com/bluesky-social/indigo/api/atproto"
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
 	"github.com/bluesky-social/indigo/did"
 	"github.com/bluesky-social/indigo/events"
 	lexutil "github.com/bluesky-social/indigo/lex/util"
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/bluesky-social/indigo/repomgr"
 	"github.com/bluesky-social/indigo/util"
+	"github.com/bluesky-social/indigo/util/cliutil"
 	"github.com/bluesky-social/indigo/xrpc"
 
 	"github.com/gorilla/websocket"
@@ -717,7 +716,7 @@ func loadCache(filename string) (map[string]*bsky.FeedDefs_PostView, error) {
 	}
 	defer jsonFile.Close()
 
-	byteValue, err := ioutil.ReadAll(jsonFile)
+	byteValue, err := io.ReadAll(jsonFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
@@ -736,7 +735,7 @@ func saveCache(filename string, data map[string]*bsky.FeedDefs_PostView) error {
 		return fmt.Errorf("failed to marshal json: %w", err)
 	}
 
-	err = ioutil.WriteFile(filename, file, 0644)
+	err = os.WriteFile(filename, file, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
