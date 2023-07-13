@@ -133,7 +133,7 @@ func (s *BGS) HandleComAtprotoSyncGetRepo(c echo.Context) error {
 	// func (s *BGS) handleComAtprotoSyncGetRepo(ctx context.Context,did string,earliest string,latest string) (io.Reader, error)
 	out, handleErr = s.handleComAtprotoSyncGetRepo(ctx, did, earliest, latest)
 	if handleErr != nil {
-		return c.JSON(500, handleErr.Error())
+		return handleErr
 	}
 	return c.Stream(200, "application/vnd.ipld.car", out)
 }

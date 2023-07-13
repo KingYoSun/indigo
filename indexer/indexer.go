@@ -200,7 +200,6 @@ func (ix *Indexer) handleRecordDelete(ctx context.Context, evt *repomgr.RepoEven
 		if err := ix.db.Model(models.FeedPost{}).Where("id = ?", fp.ID).UpdateColumn("deleted", true).Error; err != nil {
 			return err
 		}
-
 	case "app.bsky.feed.repost":
 		if err := ix.db.Where("reposter = ? AND rkey = ?", evt.User, op.Rkey).Delete(&models.RepostRecord{}).Error; err != nil {
 			return err
