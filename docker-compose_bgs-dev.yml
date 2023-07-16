@@ -5,25 +5,40 @@ services:
     build:
       context: .
       dockerfile: ./cmd/bigsky/Dockerfile
-    image: indigo-bigsky
-    container_name: indigo
-    links:
-      - db
+    container_name: indigo-bigsky
     depends_on:
       db:
         condition: service_healthy
-      meili:
-        condition: service_healthy
     ports:
-      - "2470:2470"
-      - "2471:2471"
+      - 2470:2470
+      - 2471:2471
     volumes:
       - bgs-data:/data/bigsky
     environment:
       DATABASE_URL: postgres://admin:password@db:5432/bgs
       CARSTORE_DATABASE_URL: postgres://admin:password@db:5432/carstore
-      MEILISEARCH_URL: http://meili:7700
-      BGS_ADMIN_KEY: DevAdminPass
+  palomar:
+    build:
+      context: .
+      dockerfile: ./cmd/palomar/Dockerfile
+    container_name: indigo-palomar
+    depends_on:
+      db:
+        condition: service_healthy
+      bigsky:
+        condition: service_started
+      meili:
+        condition: service_healthy
+    ports:
+      - 3999:3999
+    environment:
+      DATABASE_URL: postgres://admin:password@db:5432/palomar
+      ATP_BGS_HOST: ws://bigsky:2470
+      SEARCH_ENGINE_TYPE: meili
+      MEILISEARCH_APIKEY: meili-master-key
+      SEARCH_ENGINE_HOSTS: http://meili:7700
+      ADMIN_KEY: DevAdminPass
+      ATP_PDS_HOST: https://boobee.blue
   db:
     image: postgres:14.6
     container_name: postgres
@@ -50,10 +65,10 @@ services:
       MEILI_MASTER_KEY: meili-master-key
     healthcheck:
       test: "curl http://meili:7700/health"
-      interval: 10s
-      timeout: 30s
+      interval: 5s
+      timeout: 10s
       retries: 20
-      start_period: 10s
+      start_period: 5s
 volumes:
   bgs-data:
   db-store:

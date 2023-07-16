@@ -16,6 +16,15 @@ import (
 
 func (s *Server) deletePost(ctx context.Context, u *User, path string) error {
 	log.Infof("deleting post: %s", path)
+
+	if s.engineType == "meili" {
+		if _, err := s.meilicli.Index("posts").DeleteDocument(encodeDocumentID(u.ID, path)); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	req := esapi.DeleteRequest{
 		Index:      "posts",
 		DocumentID: encodeDocumentID(u.ID, path),
@@ -46,6 +55,27 @@ func (s *Server) indexPost(ctx context.Context, u *User, rec *bsky.FeedPost, tid
 		return fmt.Errorf("post (%d, %s) had invalid timestamp (%q): %w", u.ID, tid, rec.CreatedAt, err)
 	}
 
+	if s.engineType == "meili" {
+		blob := map[string]any{
+			"documentId": encodeDocumentID(u.ID, tid),
+			"text":       rec.Text,
+			"createdAt":  ts.UnixNano(),
+			"user":       u.Handle,
+		}
+		b, err := json.Marshal(blob)
+		if err != nil {
+			return err
+		}
+
+		log.Infof("Indexing post to Meilisearch")
+
+		if _, err = s.meilicli.Index("posts").AddDocuments(bytes.NewReader(b), "documentId"); err != nil {
+			return fmt.Errorf("failed to send indexing to Meilisearch: %w", err)
+		}
+
+		return nil
+	}
+
 	blob := map[string]any{
 		"text":      rec.Text,
 		"createdAt": ts.UnixNano(),
@@ -74,7 +104,38 @@ func (s *Server) indexPost(ctx context.Context, u *User, rec *bsky.FeedPost, tid
 	return nil
 }
 
+type MeiliProfile struct {
+	*bsky.ActorProfile
+	Did        string `json:"did"`
+	DocumentId string `json:"documentId"`
+}
+
 func (s *Server) indexProfile(ctx context.Context, u *User, rec *bsky.ActorProfile) error {
+	if s.engineType == "meili" {
+		document := &MeiliProfile{
+			ActorProfile: rec,
+			Did: u.Did,
+			DocumentId: fmt.Sprint(u.ID),
+		}
+
+		b, err := json.Marshal(document)
+		if err != nil {
+			return err
+		}
+
+		n := ""
+		if rec.DisplayName != nil {
+			n = *rec.DisplayName
+		}
+		log.Infof("Indexing profile to Meilisearch: %s", n)
+
+		if _, err = s.meilicli.Index("profiles").AddDocuments(bytes.NewReader(b), "documentId"); err != nil {
+			return fmt.Errorf("failed to send indexing to Meilisearch: %w", err)
+		}
+
+		return nil
+	}
+
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return err
@@ -83,16 +144,6 @@ func (s *Server) indexProfile(ctx context.Context, u *User, rec *bsky.ActorProfi
 	n := ""
 	if rec.DisplayName != nil {
 		n = *rec.DisplayName
-	}
-
-	blob := map[string]string{
-		"displayName": n,
-		"handle":      u.Handle,
-		"did":         u.Did,
-	}
-
-	if rec.Description != nil {
-		blob["description"] = *rec.Description
 	}
 
 	log.Infof("Indexing profile: %s", n)
@@ -123,6 +174,27 @@ func (s *Server) updateUserHandle(ctx context.Context, did, handle string) error
 	}
 
 	u.Handle = handle
+
+	if s.engineType == "meili" {
+		b, err := json.Marshal(map[string]any{
+			"script": map[string]any{
+				"source": "ctx._source.handle = params.handle",
+				"lang":   "painless",
+				"params": map[string]any{
+					"handle": handle,
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		if _, err = s.meilicli.Index("profiles").UpdateDocuments(bytes.NewReader(b), "documentId"); err != nil {
+			return fmt.Errorf("failed to send indexing to Meilisearch: %w", err)
+		}
+
+		return nil
+	}
 
 	b, err := json.Marshal(map[string]any{
 		"script": map[string]any{

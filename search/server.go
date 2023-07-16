@@ -28,6 +28,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	meilisearch "github.com/meilisearch/meilisearch-go"
 	es "github.com/opensearch-project/opensearch-go/v2"
 	gorm "gorm.io/gorm"
 )
@@ -42,6 +43,10 @@ type Server struct {
 	bgsxrpc *xrpc.Client
 	plc     *api.PLCServer
 	echo    *echo.Echo
+
+	engineType string
+
+	meilicli *meilisearch.Client
 
 	userCache *lru.Cache
 }
@@ -65,12 +70,18 @@ type LastSeq struct {
 	Seq int64
 }
 
-func NewServer(db *gorm.DB, escli *es.Client, plcHost, pdsHost, bgsHost string) (*Server, error) {
+type AuthToken struct {
+	gorm.Model
+	Token string `gorm:"index"`
+}
+
+func NewServer(db *gorm.DB, escli *es.Client, meilicli *meilisearch.Client, engineType, plcHost, pdsHost, bgsHost string) (*Server, error) {
 
 	log.Info("Migrating database")
 	db.AutoMigrate(&PostRef{})
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&LastSeq{})
+	db.AutoMigrate(&AuthToken{})
 
 	// TODO: robust client
 	xc := &xrpc.Client{
@@ -93,15 +104,68 @@ func NewServer(db *gorm.DB, escli *es.Client, plcHost, pdsHost, bgsHost string) 
 
 	ucache, _ := lru.New(100000)
 	s := &Server{
-		escli:     escli,
-		db:        db,
-		bgshost:   bgsHost,
-		xrpcc:     xc,
-		bgsxrpc:   bgsxrpc,
-		plc:       plc,
-		userCache: ucache,
+		escli:      escli,
+		db:         db,
+		bgshost:    bgsHost,
+		xrpcc:      xc,
+		bgsxrpc:    bgsxrpc,
+		plc:        plc,
+		userCache:  ucache,
+		meilicli:   meilicli,
+		engineType: engineType,
 	}
 	return s, nil
+}
+
+func (s *Server) lookupAdminToken(tok string) (bool, error) {
+	var at AuthToken
+	if err := s.db.Find(&at, "token = ?", tok).Error; err != nil {
+		return false, err
+	}
+
+	if at.ID == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (s *Server) CreateAdminToken(tok string) error {
+	exists, err := s.lookupAdminToken(tok)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return nil
+	}
+
+	return s.db.Create(&AuthToken{
+		Token: tok,
+	}).Error
+}
+
+func (s *Server) checkAdminAuth(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(e echo.Context) error {
+		authheader := e.Request().Header.Get("Authorization")
+		pref := "Bearer "
+		if !strings.HasPrefix(authheader, pref) {
+			return echo.ErrForbidden
+		}
+
+		token := authheader[len(pref):]
+
+		exists, err := s.lookupAdminToken(token)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			return echo.ErrForbidden
+		}
+
+		return next(e)
+	}
 }
 
 func (s *Server) getLastCursor() (int64, error) {
@@ -327,6 +391,44 @@ func (s *Server) SearchPosts(ctx context.Context, srch string, offset, size int)
 	return out, nil
 }
 
+func (s *Server) SearchPostsMeili(ctx context.Context, srch string, offset, size int) ([]PostSearchResult, error) {
+	posts, err := doSearchPostsMeili(ctx, s.meilicli, srch, offset, size)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search at meilisearch: %w", err)
+	}
+
+	out := []PostSearchResult{}
+	for _, p := range posts {
+		uid, tid, err := decodeDocumentID(p.DocumentId)
+		if err != nil {
+			return nil, fmt.Errorf("decoding document id: %w", err)
+		}
+
+		var pr PostRef
+		if err := s.db.First(&pr, "tid = ? AND uid = ?", tid, uid).Error; err != nil {
+			log.Infof("failed to find post in database that is referenced by meilisearch: %s", p.DocumentId)
+			return nil, err
+		}
+
+		var u User
+		if err := s.db.First(&u, "id = ?", pr.Uid).Error; err != nil {
+			return nil, fmt.Errorf("failed to find user from db: %w", err)
+		}
+
+		out = append(out, PostSearchResult{
+			Tid: pr.Tid,
+			Cid: pr.Cid,
+			User: UserResult{
+				Did:    u.Did,
+				Handle: u.Handle,
+			},
+			Post: &p,
+		})
+	}
+
+	return out, nil
+}
+
 func (s *Server) getOrCreateUser(ctx context.Context, did string) (*User, error) {
 	cu, ok := s.userCache.Get(did)
 	if ok {
@@ -415,6 +517,33 @@ func (s *Server) SearchProfiles(ctx context.Context, srch string) ([]*ActorSearc
 	return out, nil
 }
 
+func (s *Server) SearchProfilesMeili(ctx context.Context, srch string) ([]*ActorSearchResp, error) {
+	profiles, err := doSearchProfilesMeili(ctx, s.meilicli, srch)
+	if err != nil {
+		return nil, err
+	}
+
+	out := []*ActorSearchResp{}
+	for _, p := range profiles {
+		did, err := strconv.Atoi(p.Did)
+		if err != nil {
+			return nil, err
+		}
+
+		var u User
+		if err := s.db.First(&u, "did = ?", did).Error; err != nil {
+			return nil, err
+		}
+
+		out = append(out, &ActorSearchResp{
+			ActorProfile: *p.ActorProfile,
+			DID:          u.Did,
+		})
+	}
+
+	return out, nil
+}
+
 func OpenBlockstore(dir string) (blockstore.Blockstore, error) {
 	fds, err := flatfs.CreateOrOpen(dir, flatfs.IPFS_DEF_SHARD, false)
 	if err != nil {
@@ -462,6 +591,10 @@ func (s *Server) RunAPI(listen string) error {
 	e.GET("/_health", s.handleHealthCheck)
 	e.GET("/search/posts", s.handleSearchRequestPosts)
 	e.GET("/search/profiles", s.handleSearchRequestProfiles)
+
+	admin := e.Group("/admin", s.checkAdminAuth)
+	admin.POST("/setting/meili/index/:index", s.handleUpdateMeiliIndexSetting)
+
 	s.echo = e
 
 	log.Infof("starting search API daemon at: %s", listen)

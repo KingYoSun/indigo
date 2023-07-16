@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	_ "github.com/joho/godotenv/autoload"
+	"github.com/meilisearch/meilisearch-go"
 
 	"github.com/bluesky-social/indigo/search"
 	"github.com/bluesky-social/indigo/util/cliutil"
@@ -20,6 +21,11 @@ import (
 )
 
 var log = logging.Logger("palomar")
+
+func init() {
+	// control log level using, eg, LOG_LEVEL=debug
+	logging.SetAllLoggers(logging.LevelInfo)
+}
 
 func main() {
 	if err := run(os.Args); err != nil {
@@ -54,22 +60,22 @@ func run(args []string) error {
 			EnvVars: []string{"ES_PASSWORD", "ELASTIC_PASSWORD"},
 		},
 		&cli.StringFlag{
-			Name:    "elastic-hosts",
-			Usage:   "elasticsearch hosts (schema/host/port)",
-			Value:   "http://localhost:9200",
-			EnvVars: []string{"ES_HOSTS", "ELASTIC_HOSTS"},
+			Name:    "search-engine-hosts",
+			Usage:   "searchengine hosts (schema/host/port)",
+			Value:   "http://localhost:7700",
+			EnvVars: []string{"ES_HOSTS", "ELASTIC_HOSTS", "MEILI_HOSTS", "SEARCH_ENGINE_HOSTS"},
 		},
 		&cli.StringFlag{
-			Name:    "es-post-index",
-			Usage:   "ES index for 'post' documents",
+			Name:    "post-index",
+			Usage:   "Index for 'post' documents",
 			Value:   "posts",
-			EnvVars: []string{"ES_POST_INDEX"},
+			EnvVars: []string{"ES_POST_INDEX", "MEILI_POST_INDEX", "POST_INDEX"},
 		},
 		&cli.StringFlag{
-			Name:    "es-profile-index",
-			Usage:   "ES index for 'profile' documents",
+			Name:    "profile-index",
+			Usage:   "Index for 'profile' documents",
 			Value:   "profiles",
-			EnvVars: []string{"ES_PROFILE_INDEX"},
+			EnvVars: []string{"ES_PROFILE_INDEX", "MEILI_PROFILE_INDEX", "PROFILE_INDEX"},
 		},
 		&cli.StringFlag{
 			Name:    "atp-bgs-host",
@@ -89,6 +95,22 @@ func run(args []string) error {
 			Usage:   "method, hostname, and port of PDS instance",
 			Value:   "https://bsky.social",
 			EnvVars: []string{"ATP_PDS_HOST"},
+		},
+		&cli.StringFlag{
+			Name:    "search-engine-type",
+			Usage:   "elastic or meili",
+			Value:   "meili",
+			EnvVars: []string{"SEARCH_ENGINE_TYPE"},
+		},
+		&cli.StringFlag{
+			Name:    "meilisearch-apikey",
+			Usage:   "apikey for meiliseach",
+			Value:   "meili-master-key",
+			EnvVars: []string{"MEILISEARCH_APIKEY"},
+		},
+		&cli.StringFlag{
+			Name:    "admin-key",
+			EnvVars: []string{"ADMIN_KEY"},
 		},
 	}
 
@@ -128,20 +150,38 @@ var runCmd = &cli.Command{
 			return err
 		}
 
-		escli, err := createEsClient(cctx)
-		if err != nil {
-			return fmt.Errorf("failed to get elasticsearch: %w", err)
+		var meilicli *meilisearch.Client
+		var escli *es.Client
+		var clierr error
+		if cctx.String("search-engine-type") == "meili" {
+			meilicli = meilisearch.NewClient(meilisearch.ClientConfig{
+				Host: cctx.String("search-engine-hosts"),
+				APIKey: cctx.String("meilisearch-apikey"),
+			})
+		} else {
+			escli, clierr = createEsClient(cctx)
+			if clierr != nil {
+				return fmt.Errorf("failed to get elasticsearch: %w", err)
+			}
 		}
 
 		srv, err := search.NewServer(
 			db,
 			escli,
+			meilicli,
+			cctx.String("search-engine-type"),
 			cctx.String("atp-plc-host"),
 			cctx.String("atp-pds-host"),
 			cctx.String("atp-bgs-host"),
 		)
 		if err != nil {
 			return err
+		}
+
+		if tok := cctx.String("admin-key"); tok != "" {
+			if err := srv.CreateAdminToken(tok); err != nil {
+				return fmt.Errorf("failed to set up admin token: %w", err)
+			}
 		}
 
 		go func() {
@@ -169,6 +209,20 @@ var elasticCheckCmd = &cli.Command{
 		},
 	},
 	Action: func(cctx *cli.Context) error {
+		if cctx.String("search-engine-type") == "meili" {
+			fmt.Println("Use Meilisearch")
+			meilicli := meilisearch.NewClient(meilisearch.ClientConfig{
+				Host: cctx.String("search-engine-hosts"),
+				APIKey: cctx.String("meilisearch-apikey"),
+			})
+			res := meilicli.IsHealthy()
+			if !res {
+				return fmt.Errorf("Meilisearch is not Healthy")
+			}
+
+			return nil
+		}
+
 		escli, err := createEsClient(cctx)
 		if err != nil {
 			return err
@@ -190,6 +244,11 @@ var searchCmd = &cli.Command{
 	Name:  "search",
 	Usage: "run a simple query against search index",
 	Action: func(cctx *cli.Context) error {
+		if cctx.String("search-engine-type") == "meili" {
+			fmt.Println("Use Meilisearch, skip searchCmd")
+			return nil
+		}
+
 		escli, err := createEsClient(cctx)
 		if err != nil {
 			return err
@@ -210,7 +269,7 @@ var searchCmd = &cli.Command{
 		// Perform the search request.
 		res, err := escli.Search(
 			escli.Search.WithContext(context.Background()),
-			escli.Search.WithIndex(cctx.String("es-posts-index")),
+			escli.Search.WithIndex(cctx.String("posts-index")),
 			escli.Search.WithBody(&buf),
 			escli.Search.WithTrackTotalHits(true),
 			escli.Search.WithPretty(),
@@ -228,7 +287,7 @@ var searchCmd = &cli.Command{
 func createEsClient(cctx *cli.Context) (*es.Client, error) {
 
 	addrs := []string{}
-	if hosts := cctx.String("elastic-hosts"); hosts != "" {
+	if hosts := cctx.String("search-engine-hosts"); hosts != "" {
 		addrs = strings.Split(hosts, ",")
 	}
 

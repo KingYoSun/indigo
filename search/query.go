@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	meilisearch "github.com/meilisearch/meilisearch-go"
 	es "github.com/opensearch-project/opensearch-go/v2"
 )
 
@@ -42,6 +43,13 @@ type PostSearchResult struct {
 	Cid  string     `json:"cid"`
 	User UserResult `json:"user"`
 	Post any        `json:"post"`
+}
+
+type MeiliPost struct {
+	DocumentId  string     `json:"documentId"`
+	Text        string     `json:"text"`
+	CreatedAt   int64      `json:"createdAt"`
+	User        string     `json:"user"`
 }
 
 func doSearchPosts(ctx context.Context, escli *es.Client, q string, offset int, size int) (*EsSearchResponse, error) {
@@ -105,4 +113,62 @@ func doSearch(ctx context.Context, escli *es.Client, index string, query interfa
 	}
 
 	return &out, nil
+}
+
+func doSearchPostsMeili(ctx context.Context, meilicli *meilisearch.Client, q string, offset int, size int) ([]MeiliPost, error) {
+	query := &meilisearch.SearchRequest{
+		Offset: int64(offset),
+		Limit: int64(size),
+		Sort: []string{
+			"createdAt:desc",
+		},
+	}
+
+	resp, err := doSearchMeili(ctx, meilicli, "posts", query, q)
+	if err != nil {
+		return nil, err
+	}
+
+	encoded, err := json.Marshal(resp.Hits)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode resp.Hits of Meilisearch: %w", err)
+	}
+
+	var out []MeiliPost
+	if err := json.Unmarshal(encoded, &out); err != nil {
+		return nil, fmt.Errorf("failed to decode json of resp.Hits of Meilisearch: %w", err)
+	}
+
+	return out, nil
+}
+
+func doSearchProfilesMeili(ctx context.Context, meilicli *meilisearch.Client, q string) ([]MeiliProfile, error) {
+	query := &meilisearch.SearchRequest{}
+
+	resp, err := doSearchMeili(ctx, meilicli, "profiles", query, q)
+	if err != nil {
+		return nil, err
+	}
+
+	encoded, err := json.Marshal(resp.Hits)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode resp.Hits of Meilisearch: %w", err)
+	}
+
+	var out []MeiliProfile
+	if err := json.Unmarshal(encoded, &out); err != nil {
+		return nil, fmt.Errorf("failed to decode json of resp.Hits of Meilisearch: %w", err)
+	}
+
+	return out, nil
+}
+
+func doSearchMeili(ctx context.Context, meilicli *meilisearch.Client, index string, query *meilisearch.SearchRequest, keyword string) (*meilisearch.SearchResponse, error) {
+	resp, err := meilicli.Index(index).Search(keyword, query)
+
+	if err != nil {
+		log.Fatalf("Error getting response: %s", err)
+	}
+
+	return resp, nil
 }

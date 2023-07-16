@@ -64,12 +64,21 @@ func (s *Server) handleSearchRequestPosts(e echo.Context) error {
 		count = v
 	}
 
-	out, err := s.SearchPosts(ctx, q, offset, count)
-	if err != nil {
-		return err
-	}
+	if s.engineType == "meili" {
+		out, err := s.SearchPostsMeili(ctx, q, offset, count)
+		if err != nil {
+			return err
+		}
 
-	return e.JSON(200, out)
+		return e.JSON(200, out)
+	} else {
+		out, err := s.SearchPosts(ctx, q, offset, count)
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, out)
+	}
 }
 
 func (s *Server) handleSearchRequestProfiles(e echo.Context) error {
@@ -83,10 +92,19 @@ func (s *Server) handleSearchRequestProfiles(e echo.Context) error {
 		})
 	}
 
-	out, err := s.SearchProfiles(ctx, q)
-	if err != nil {
-		return err
-	}
+	if s.engineType == "meili" {
+		out, err := s.SearchProfilesMeili(ctx, q)
+		if err != nil {
+			return err
+		}
 
-	return e.JSON(200, out)
+		return e.JSON(200, out)
+	} else {
+		out, err := s.SearchProfiles(ctx, q)
+		if err != nil {
+			return err
+		}
+
+		return e.JSON(200, out)
+	}
 }

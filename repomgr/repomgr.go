@@ -415,10 +415,6 @@ func (rm *RepoManager) ReadRepo(ctx context.Context, user models.Uid, earlyCid, 
 	return rm.cs.ReadUserCar(ctx, user, earlyCid, lateCid, true, w)
 }
 
-func (rm *RepoManager) ReadRepoAtCid(ctx context.Context, user models.Uid, decodedCid cid.Cid, w io.Writer) error {
-	return rm.cs.ReadUserCarAtCid(ctx, user, decodedCid, w)
-}
-
 func (rm *RepoManager) GetRecord(ctx context.Context, user models.Uid, collection string, rkey string, maybeCid cid.Cid) (cid.Cid, cbg.CBORMarshaler, error) {
 	bs, err := rm.cs.ReadOnlySession(user)
 	if err != nil {
