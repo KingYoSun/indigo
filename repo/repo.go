@@ -364,37 +364,32 @@ func (r *Repo) DiffSince(ctx context.Context, oldrepo cid.Cid) ([]*mst.DiffOp, e
 	if oldrepo.Defined() {
 		otherRepo, err := OpenRepo(ctx, r.bs, oldrepo, true)
 		if err != nil {
-			return nil, fmt.Errorf("OpenRepo: %w", err)
+			return nil, err
 		}
 
 		oldmst, err := otherRepo.getMst(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("otherRepo: %w", err)
+			return nil, err
 		}
 
 		oldptr, err := oldmst.GetPointer(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("oldmst.GetPointer: %w", err)
+			return nil, err
 		}
 		oldTree = oldptr
 	}
 
 	curmst, err := r.getMst(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("r.getMst: %w", err)
+		return nil, err
 	}
 
 	curptr, err := curmst.GetPointer(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("curmst.GetPointer: %w", err)
+		return nil, err
 	}
 
-	diff, err := mst.DiffTrees(ctx, r.bs, oldTree, curptr)
-	if err != nil {
-		return nil, fmt.Errorf("mst.DiffTrees: %w", err)
-	}
-
-	return diff, nil
+	return mst.DiffTrees(ctx, r.bs, oldTree, curptr)
 }
 
 func (r *Repo) CopyDataTo(ctx context.Context, bs blockstore.Blockstore) error {
