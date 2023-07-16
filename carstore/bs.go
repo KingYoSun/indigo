@@ -303,14 +303,14 @@ func (cs *CarStore) NewDeltaSession(ctx context.Context, user models.Uid, prev *
 		if lastShard.Root.CID != *prev {
 			fork, err := cs.checkFork(ctx, user, *prev)
 			if err != nil {
-				return nil, fmt.Errorf("failed to check carstore base mismatch for fork condition: %w, mismatch: %s != %s", err, lastShard.Root.CID.String(), prev.String())
+				return nil, fmt.Errorf("failed to check carstore base mismatch for fork condition: %w", err)
 			}
 
 			if fork {
 				return nil, fmt.Errorf("fork at %s: %w", prev.String(), ErrRepoFork)
 			}
 
-			return nil, fmt.Errorf("mismatch: %s != %s: %w", lastShard.Root.CID.String(), prev.String(), ErrRepoBaseMismatch)
+			return nil, fmt.Errorf("mismatch: %s != %s: %w", lastShard.Root.CID, prev.String(), ErrRepoBaseMismatch)
 		}
 	}
 
