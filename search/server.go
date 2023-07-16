@@ -525,13 +525,8 @@ func (s *Server) SearchProfilesMeili(ctx context.Context, srch string) ([]*Actor
 
 	out := []*ActorSearchResp{}
 	for _, p := range profiles {
-		did, err := strconv.Atoi(p.Did)
-		if err != nil {
-			return nil, err
-		}
-
 		var u User
-		if err := s.db.First(&u, "did = ?", did).Error; err != nil {
+		if err := s.db.Last(&u, "did = ?", p.Did).Error; err != nil {
 			return nil, err
 		}
 
