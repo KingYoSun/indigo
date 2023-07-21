@@ -88,6 +88,12 @@ func (s *Slurper) SetNewSubsDisabled(dis bool) error {
 	return nil
 }
 
+func (s *Slurper) GetNewSubsDisabledState() bool {
+	s.lk.Lock()
+	defer s.lk.Unlock()
+	return s.newSubsDisabled
+}
+
 var ErrNewSubsDisabled = fmt.Errorf("new subscriptions temporarily disabled")
 
 func (s *Slurper) SubscribeToPds(ctx context.Context, host string, reg bool) error {
@@ -150,7 +156,7 @@ func (s *Slurper) RestartAll() error {
 	defer s.lk.Unlock()
 
 	var all []models.PDS
-	if err := s.db.Find(&all, "registered = true").Error; err != nil {
+	if err := s.db.Find(&all, "registered = true AND blocked = false").Error; err != nil {
 		return err
 	}
 

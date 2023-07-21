@@ -24,6 +24,7 @@ var adminCmd = &cli.Command{
 		reportsCmd,
 		disableInvitesCmd,
 		enableInvitesCmd,
+		listInviteTreeCmd,
 	},
 }
 
@@ -109,7 +110,9 @@ var checkUserCmd = &cli.Command{
 
 			fmt.Println(rep.Handle)
 			fmt.Println(rep.Did)
-			fmt.Println(rep.Email)
+			if rep.Email != nil {
+				fmt.Println(*rep.Email)
+			}
 			fmt.Println("indexed at: ", rep.IndexedAt)
 			fmt.Printf("Invited by: %s\n", invby)
 			if rep.InvitesDisabled != nil && *rep.InvitesDisabled {
@@ -496,5 +499,91 @@ var enableInvitesCmd = &cli.Command{
 		return atproto.AdminEnableAccountInvites(ctx, xrpcc, &atproto.AdminEnableAccountInvites_Input{
 			Account: handle,
 		})
+	},
+}
+
+var listInviteTreeCmd = &cli.Command{
+	Name: "listInviteTree",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:     "admin-password",
+			EnvVars:  []string{"ATP_AUTH_ADMIN_PASSWORD"},
+			Required: true,
+		},
+		&cli.StringFlag{
+			Name:    "plc",
+			Usage:   "method, hostname, and port of PLC registry",
+			Value:   "https://plc.directory",
+			EnvVars: []string{"ATP_PLC_HOST"},
+		},
+		&cli.BoolFlag{
+			Name:  "disable-invites",
+			Usage: "additionally disable invites for all printed DIDs",
+		},
+		&cli.BoolFlag{
+			Name: "print-emails",
+		},
+	},
+	ArgsUsage: `[handle]`,
+	Action: func(cctx *cli.Context) error {
+		xrpcc, err := cliutil.GetXrpcClient(cctx, false)
+		if err != nil {
+			return err
+		}
+
+		ctx := context.Background()
+
+		phr := &api.ProdHandleResolver{}
+
+		did := cctx.Args().First()
+		if !strings.HasPrefix(did, "did:") {
+			rdid, err := phr.ResolveHandleToDid(ctx, cctx.Args().First())
+			if err != nil {
+				return fmt.Errorf("resolve handle %q: %w", cctx.Args().First(), err)
+			}
+
+			did = rdid
+		}
+
+		adminKey := cctx.String("admin-password")
+		xrpcc.AdminToken = &adminKey
+
+		queue := []string{did}
+
+		for len(queue) > 0 {
+			next := queue[0]
+			queue = queue[1:]
+
+			if cctx.Bool("disable-invites") {
+				if err := atproto.AdminDisableAccountInvites(ctx, xrpcc, &atproto.AdminDisableAccountInvites_Input{
+					Account: next,
+				}); err != nil {
+					return fmt.Errorf("failed to disable invites on %q: %w", next, err)
+				}
+			}
+
+			rep, err := atproto.AdminGetRepo(ctx, xrpcc, next)
+			if err != nil {
+				return fmt.Errorf("getRepo %s: %w", did, err)
+			}
+			fmt.Print(next)
+
+			if cctx.Bool("print-emails") {
+				if rep.Email != nil {
+					fmt.Println(" ", *rep.Email)
+				} else {
+					fmt.Println(" NO EMAIL")
+				}
+			} else {
+				fmt.Println()
+			}
+
+			for _, inv := range rep.Invites {
+				for _, u := range inv.Uses {
+					queue = append(queue, u.UsedBy)
+				}
+			}
+		}
+		return nil
 	},
 }

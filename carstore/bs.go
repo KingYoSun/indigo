@@ -67,7 +67,7 @@ type CarShard struct {
 	ID        uint `gorm:"primarykey"`
 	CreatedAt time.Time
 
-	Root      models.DbCID
+	Root      models.DbCID `gorm:"index"`
 	DataStart int64
 	Seq       int `gorm:"index"`
 	Path      string
@@ -265,6 +265,9 @@ func (cs *CarStore) putLastShardCache(user models.Uid, ls *CarShard) {
 }
 
 func (cs *CarStore) getLastShard(ctx context.Context, user models.Uid) (*CarShard, error) {
+	ctx, span := otel.Tracer("carstore").Start(ctx, "getLastShard")
+	defer span.End()
+
 	maybeLs := cs.checkLastShardCache(user)
 	if maybeLs != nil {
 		return maybeLs, nil
@@ -590,7 +593,7 @@ func (ds *DeltaSession) closeWithRoot(ctx context.Context, root cid.Cid, rebase 
 	buf := new(bytes.Buffer)
 	hnw, err := WriteCarHeader(buf, root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to write car header: %w", err)
 	}
 
 	// TODO: writing these blocks in map traversal order is bad, I believe the
@@ -603,7 +606,7 @@ func (ds *DeltaSession) closeWithRoot(ctx context.Context, root cid.Cid, rebase 
 	for k, blk := range ds.blks {
 		nw, err := LdWrite(buf, k.Bytes(), blk.RawData())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to write block: %w", err)
 		}
 
 		/*
@@ -625,7 +628,7 @@ func (ds *DeltaSession) closeWithRoot(ctx context.Context, root cid.Cid, rebase 
 
 	path, err := ds.cs.writeNewShardFile(ctx, ds.user, ds.seq, buf.Bytes())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to write shard file: %w", err)
 	}
 
 	// TODO: all this database work needs to be in a single transaction
@@ -637,28 +640,39 @@ func (ds *DeltaSession) closeWithRoot(ctx context.Context, root cid.Cid, rebase 
 		Usr:       ds.user,
 	}
 
+	if err := ds.putShard(ctx, &shard, brefs); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (ds *DeltaSession) putShard(ctx context.Context, shard *CarShard, brefs []map[string]any) error {
+	ctx, span := otel.Tracer("carstore").Start(ctx, "putShard")
+	defer span.End()
+
 	// TODO: there should be a way to create the shard and block_refs that
 	// reference it in the same query, would save a lot of time
 	if err := ds.cs.meta.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.WithContext(ctx).Create(&shard).Error; err != nil {
-			return err
+		if err := tx.WithContext(ctx).Create(shard).Error; err != nil {
+			return fmt.Errorf("failed to create shard in DB tx: %w", err)
 		}
-		ds.cs.putLastShardCache(ds.user, &shard)
+		ds.cs.putLastShardCache(ds.user, shard)
 
 		for _, ref := range brefs {
 			ref["shard"] = shard.ID
 		}
 
 		if err := createBlockRefs(ctx, tx, brefs); err != nil {
-			return err
+			return fmt.Errorf("failed to create block refs: %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return nil, err
+		return fmt.Errorf("failed to commit shard DB transaction: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	return nil
 }
 
 func createBlockRefs(ctx context.Context, tx *gorm.DB, brefs []map[string]any) error {
@@ -829,6 +843,9 @@ func (cs *CarStore) Stat(ctx context.Context, usr models.Uid) ([]UserStat, error
 }
 
 func (cs *CarStore) checkFork(ctx context.Context, user models.Uid, prev cid.Cid) (bool, error) {
+	ctx, span := otel.Tracer("carstore").Start(ctx, "checkFork")
+	defer span.End()
+
 	lastShard, err := cs.getLastShard(ctx, user)
 	if err != nil {
 		return false, err
