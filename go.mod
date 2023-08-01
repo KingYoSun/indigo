@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
+	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/brianvoe/gofakeit/v6 v6.20.2
 	github.com/dustinkirkland/golang-petname v0.0.0-20230626224747-e794b9370d49
 	github.com/goccy/go-json v0.10.2
@@ -11,6 +12,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/go-retryablehttp v0.7.2
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/icrowley/fake v0.0.0-20221112152111-d7b7e2276db2
 	github.com/ipfs/go-block-format v0.1.2
 	github.com/ipfs/go-bs-sqlite3 v0.0.0-20221122195556-bfcee1be620d
 	github.com/ipfs/go-cid v0.4.1
@@ -35,14 +37,18 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.2.0
 	github.com/polydawn/refmt v0.89.1-0.20221221234430-40501e09de1f
 	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/client_model v0.3.0
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli/v2 v2.25.1
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230331140348-1f892b517e70
 	github.com/whyrusleeping/go-did v0.0.0-20230717231106-35050b2a69a3
+	gitlab.com/yawning/secp256k1-voi v0.0.0-20230702045112-3980093d98cd
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.42.0
 	go.opentelemetry.io/otel v1.16.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.14.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.16.0
 	go.opentelemetry.io/otel/sdk v1.16.0
+	go.uber.org/automaxprocs v1.5.3
 	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.11.0
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
@@ -68,9 +74,11 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/corpix/uarand v0.0.0-20170723150923-031be390f409 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
+	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
@@ -120,7 +128,6 @@ require (
 	github.com/multiformats/go-varint v0.0.7 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_model v0.3.0
 	github.com/prometheus/common v0.40.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
@@ -131,7 +138,6 @@ require (
 	github.com/valyala/fasthttp v1.45.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	gitlab.com/yawning/secp256k1-voi v0.0.0-20230702045112-3980093d98cd
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.16.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.16.0 // indirect

@@ -165,7 +165,7 @@ func (tp *TestPDS) RequestScraping(t *testing.T, b *TestBGS) {
 	t.Helper()
 
 	c := &xrpc.Client{Host: "http://" + b.Host()}
-	if err := atproto.SyncRequestCrawl(context.TODO(), c, tp.RawHost()); err != nil {
+	if err := atproto.SyncRequestCrawl(context.TODO(), c, &atproto.SyncRequestCrawl_Input{Hostname: tp.RawHost()}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -425,16 +425,15 @@ func SetupBGS(ctx context.Context, didr plc.PLCClient) (*TestBGS, error) {
 	//kmgr := indexer.NewKeyManager(didr, nil)
 	kmgr := &bsutil.FakeKeyManager{}
 
-	repoman := repomgr.NewRepoManager(repomgr.NewDbHeadStore(maindb), cs, kmgr)
+	repoman := repomgr.NewRepoManager(cs, kmgr)
 
 	notifman := notifs.NewNotificationManager(maindb, repoman.GetRecord)
 
-	dbpersist, err := events.NewDbPersistence(maindb, cs, nil)
-	if err != nil {
-		return nil, err
-	}
+	opts := events.DefaultDiskPersistOptions()
+	opts.EventsPerFile = 10
+	diskpersist, err := events.NewDiskPersistence(filepath.Join(dir, "dp-primary"), filepath.Join(dir, "dp-archive"), maindb, opts)
 
-	evtman := events.NewEventManager(dbpersist)
+	evtman := events.NewEventManager(diskpersist)
 
 	ix, err := indexer.NewIndexer(maindb, notifman, evtman, didr, repoman, true, true)
 	if err != nil {
@@ -527,9 +526,9 @@ func (b *TestBGS) Events(t *testing.T, since int64) *EventStream {
 	go func() {
 		rsc := &events.RepoStreamCallbacks{
 			RepoCommit: func(evt *atproto.SyncSubscribeRepos_Commit) error {
-				fmt.Println("received event: ", evt.Seq, evt.Repo)
 				es.Lk.Lock()
 				es.Events = append(es.Events, &events.XRPCStreamEvent{RepoCommit: evt})
+				fmt.Println("received event: ", evt.Seq, evt.Repo, len(es.Events))
 				es.Lk.Unlock()
 				return nil
 			},

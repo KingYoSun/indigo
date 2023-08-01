@@ -17,6 +17,7 @@ import (
 	"github.com/bluesky-social/indigo/util/version"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
 
 	"github.com/urfave/cli/v2"
@@ -81,10 +82,10 @@ func Sonar(cctx *cli.Context) error {
 
 	rawlog, err := zap.NewProduction()
 	if err != nil {
-		log.Fatalf("failed to create logger: %+v\n", err)
+		log.Fatalf("failed to create logger: %+v", err)
 	}
 	defer func() {
-		log.Printf("main function teardown\n")
+		log.Printf("main function teardown")
 		err := rawlog.Sync()
 		if err != nil {
 			log.Printf("failed to sync logger on teardown: %+v", err.Error())
@@ -97,17 +98,17 @@ func Sonar(cctx *cli.Context) error {
 
 	u, err := url.Parse(cctx.String("ws-url"))
 	if err != nil {
-		log.Fatalf("failed to parse ws-url: %+v\n", err)
+		log.Fatalf("failed to parse ws-url: %+v", err)
 	}
 
 	s, err := sonar.NewSonar(log, cctx.String("cursor-file"), u.String())
 	if err != nil {
-		log.Fatalf("failed to create sonar: %+v\n", err)
+		log.Fatalf("failed to create sonar: %+v", err)
 	}
 
 	wg := sync.WaitGroup{}
 
-	pool := events.NewConsumerPool(cctx.Int("worker-count"), cctx.Int("max-queue-size"), s.HandleStreamEvent)
+	pool := events.NewConsumerPool(cctx.Int("worker-count"), cctx.Int("max-queue-size"), u.Host, s.HandleStreamEvent)
 
 	// Start a goroutine to manage the cursor file, saving the current cursor every 5 seconds.
 	go func() {
@@ -116,7 +117,7 @@ func Sonar(cctx *cli.Context) error {
 		ticker := time.NewTicker(5 * time.Second)
 		rawlog, err := zap.NewProduction()
 		if err != nil {
-			log.Fatalf("failed to create logger: %+v\n", err)
+			log.Fatalf("failed to create logger: %+v", err)
 		}
 		log := rawlog.Sugar().With("source", "cursor_file_manager")
 
@@ -126,14 +127,14 @@ func Sonar(cctx *cli.Context) error {
 				log.Info("shutting down cursor file manager")
 				err := s.WriteCursorFile()
 				if err != nil {
-					log.Errorf("failed to write cursor file: %+v\n", err)
+					log.Errorf("failed to write cursor file: %+v", err)
 				}
 				log.Info("cursor file manager shut down successfully")
 				return
 			case <-ticker.C:
 				err := s.WriteCursorFile()
 				if err != nil {
-					log.Errorf("failed to write cursor file: %+v\n", err)
+					log.Errorf("failed to write cursor file: %+v", err)
 				}
 			}
 		}
@@ -148,7 +149,7 @@ func Sonar(cctx *cli.Context) error {
 
 		rawlog, err := zap.NewProduction()
 		if err != nil {
-			log.Fatalf("failed to create logger: %+v\n", err)
+			log.Fatalf("failed to create logger: %+v", err)
 		}
 		log := rawlog.Sugar().With("source", "liveness_checker")
 
@@ -186,14 +187,14 @@ func Sonar(cctx *cli.Context) error {
 		defer wg.Done()
 		rawlog, err := zap.NewProduction()
 		if err != nil {
-			log.Fatalf("failed to create logger: %+v\n", err)
+			log.Fatalf("failed to create logger: %+v", err)
 		}
 		log := rawlog.Sugar().With("source", "metrics_server")
 
 		log.Infof("metrics server listening on port %d", cctx.Int("port"))
 
 		if err := metricServer.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("failed to start metrics server: %+v\n", err)
+			log.Fatalf("failed to start metrics server: %+v", err)
 		}
 		log.Info("metrics server shut down successfully")
 	}()
@@ -203,7 +204,9 @@ func Sonar(cctx *cli.Context) error {
 	}
 
 	log.Infof("connecting to WebSocket at: %s", u.String())
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), http.Header{
+		"User-Agent": []string{"sonar/1.0"},
+	})
 	if err != nil {
 		log.Infof("failed to connect to websocket: %v", err)
 		return err
@@ -229,7 +232,7 @@ func Sonar(cctx *cli.Context) error {
 	log.Info("shutting down, waiting for workers to clean up...")
 
 	if err := metricServer.Shutdown(ctx); err != nil {
-		log.Errorf("failed to shut down metrics server: %+v\n", err)
+		log.Errorf("failed to shut down metrics server: %+v", err)
 		wg.Done()
 	}
 

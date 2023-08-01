@@ -316,6 +316,10 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 	return e.StartServer(srv)
 }
 
+func (bgs *BGS) Shutdown() []error {
+	return bgs.slurper.Shutdown()
+}
+
 type HealthStatus struct {
 	Status  string `json:"status"`
 	Message string `json:"msg,omitempty"`
@@ -477,7 +481,9 @@ func (bgs *BGS) EventsHandler(c echo.Context) error {
 		}
 	}()
 
-	evts, cleanup, err := bgs.events.Subscribe(ctx, func(evt *events.XRPCStreamEvent) bool { return true }, since)
+	ident := c.RealIP() + "-" + c.Request().UserAgent()
+
+	evts, cleanup, err := bgs.events.Subscribe(ctx, ident, func(evt *events.XRPCStreamEvent) bool { return true }, since)
 	if err != nil {
 		return err
 	}
