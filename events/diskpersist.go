@@ -44,6 +44,8 @@ type DiskPersistence struct {
 	outbuf *bytes.Buffer
 	evtbuf []persistJob
 
+	shutdown chan struct{}
+
 	lk sync.Mutex
 }
 
@@ -116,6 +118,7 @@ func NewDiskPersistence(primaryDir, archiveDir string, db *gorm.DB, opts *DiskPe
 		scratch:         make([]byte, headerSize),
 		outbuf:          new(bytes.Buffer),
 		writeBufferSize: opts.WriteBufferSize,
+		shutdown:        make(chan struct{}),
 	}
 
 	if err := dp.resumeLog(); err != nil {
@@ -145,7 +148,8 @@ func (dp *DiskPersistence) resumeLog() error {
 		return dp.initLogFile()
 	}
 
-	fi, err := os.Open(filepath.Join(dp.primaryDir, lfr.Path))
+	// 0 for the mode is fine since thats only used if O_CREAT is passed
+	fi, err := os.OpenFile(filepath.Join(dp.primaryDir, lfr.Path), os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
@@ -218,7 +222,7 @@ func scanForLastSeq(fi *os.File, end int64) (int64, error) {
 	for {
 		eh, err := readHeader(fi, scratch)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return lastSeq, nil
 			}
 			return 0, err
@@ -284,6 +288,8 @@ func (p *DiskPersistence) flushRoutine() {
 
 	for {
 		select {
+		case <-p.shutdown:
+			return
 		case <-t.C:
 			p.lk.Lock()
 			if err := p.flushLog(context.TODO()); err != nil {
@@ -480,7 +486,7 @@ func (p *DiskPersistence) uidForDid(ctx context.Context, did string) (models.Uid
 }
 
 func (p *DiskPersistence) Playback(ctx context.Context, since int64, cb func(*XRPCStreamEvent) error) error {
-	base := since - (since * p.eventsPerFile)
+	base := since - (since % p.eventsPerFile)
 	var logs []LogFileRef
 	if err := p.meta.Debug().Order("seq_start asc").Find(&logs, "seq_start >= ?", base).Error; err != nil {
 		return err
@@ -511,9 +517,17 @@ func (p *DiskPersistence) readEventsFrom(ctx context.Context, since int64, fn st
 	}
 
 	if since != 0 {
-		_, err := scanForLastSeq(fi, since)
+		lastSeq, err := scanForLastSeq(fi, since)
 		if err != nil {
 			return err
+		}
+		if since > lastSeq {
+			log.Errorw("playback cursor is greater than last seq of file checked",
+				"since", since,
+				"lastSeq", lastSeq,
+				"filename", fn,
+			)
+			return nil
 		}
 	}
 
@@ -705,6 +719,16 @@ func (p *DiskPersistence) Flush(ctx context.Context) error {
 	if len(p.evtbuf) > 0 {
 		return p.flushLog(ctx)
 	}
+	return nil
+}
+
+func (p *DiskPersistence) Shutdown(ctx context.Context) error {
+	close(p.shutdown)
+	if err := p.Flush(ctx); err != nil {
+		return err
+	}
+
+	p.logfi.Close()
 	return nil
 }
 

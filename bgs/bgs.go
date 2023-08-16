@@ -101,6 +101,8 @@ func NewBGS(db *gorm.DB, ix *indexer.Indexer, repoman *repomgr.RepoManager, evtm
 		didr:    didr,
 		blobs:   blobs,
 
+		ssl: ssl,
+
 		consumersLk: sync.RWMutex{},
 		consumers:   make(map[uint64]*SocketConsumer),
 	}
@@ -229,9 +231,13 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
 
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "method=${method}, uri=${uri}, status=${status} latency=${latency_human}\n",
-	}))
+	if !bgs.ssl {
+		e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+			Format: "method=${method}, uri=${uri}, status=${status} latency=${latency_human}\n",
+		}))
+	} else {
+		e.Use(middleware.LoggerWithConfig(middleware.DefaultLoggerConfig))
+	}
 
 	e.Use(MetricsMiddleware)
 
@@ -317,7 +323,13 @@ func (bgs *BGS) StartWithListener(listen net.Listener) error {
 }
 
 func (bgs *BGS) Shutdown() []error {
-	return bgs.slurper.Shutdown()
+	errs := bgs.slurper.Shutdown()
+
+	if err := bgs.events.Shutdown(context.TODO()); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errs
 }
 
 type HealthStatus struct {
@@ -455,7 +467,7 @@ func (bgs *BGS) EventsHandler(c echo.Context) error {
 	defer cancel()
 
 	// TODO: authhhh
-	conn, err := websocket.Upgrade(c.Response(), c.Request(), c.Response().Header(), 1<<10, 1<<10)
+	conn, err := websocket.Upgrade(c.Response(), c.Request(), c.Response().Header(), 10<<10, 10<<10)
 	if err != nil {
 		return fmt.Errorf("upgrading websocket: %w", err)
 	}
@@ -502,6 +514,18 @@ func (bgs *BGS) EventsHandler(c echo.Context) error {
 		return err
 	})
 
+	// Start a goroutine to read messages from the client and discard them.
+	go func() {
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				log.Errorf("failed to read message from client: %s", err)
+				cancel()
+				return
+			}
+		}
+	}()
+
 	ident := c.RealIP() + "-" + c.Request().UserAgent()
 
 	evts, cleanup, err := bgs.events.Subscribe(ctx, ident, func(evt *events.XRPCStreamEvent) bool { return true }, since)
@@ -522,7 +546,12 @@ func (bgs *BGS) EventsHandler(c echo.Context) error {
 	consumerID := bgs.registerConsumer(&consumer)
 	defer bgs.cleanupConsumer(consumerID)
 
-	log.Infow("new consumer", "remote_addr", consumer.RemoteAddr, "user_agent", consumer.UserAgent)
+	log.Infow("new consumer",
+		"remote_addr", consumer.RemoteAddr,
+		"user_agent", consumer.UserAgent,
+		"cursor", since,
+		"consumer_id", consumerID,
+	)
 
 	header := events.EventHeader{Op: events.EvtKindMessage}
 	for {
